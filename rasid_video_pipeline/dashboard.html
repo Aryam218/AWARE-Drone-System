@@ -1,0 +1,3269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>AWARE | Intelligent Drone Operations</title>
+
+<style>
+
+/* =========================================================
+   RESET + THEME
+========================================================= */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --bg: #080d18;
+    --bg-soft: #0d1422;
+
+    --panel: #111a2a;
+    --panel-2: #152034;
+    --panel-3: #18253c;
+
+    --border: rgba(126, 157, 255, 0.13);
+    --border-strong: rgba(111, 145, 255, 0.28);
+
+    --primary: #6f91ff;
+    --primary-light: #8ca7ff;
+    --primary-dark: #5275e6;
+    --primary-soft: rgba(111, 145, 255, 0.09);
+
+    --secondary: #9b7bff;
+    --secondary-soft: rgba(155, 123, 255, 0.08);
+
+    --text: #f4f6fb;
+    --muted: #8995aa;
+    --muted-2: #5f6c80;
+
+    --success: #55d49b;
+    --warning: #f0c66c;
+    --danger: #ed7777;
+
+    --radius: 16px;
+}
+
+body {
+    min-height: 100vh;
+
+    font-family:
+        Inter,
+        ui-sans-serif,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+
+    color: var(--text);
+
+    background:
+        radial-gradient(
+            circle at 15% 8%,
+            rgba(111,145,255,.07),
+            transparent 25%
+        ),
+        radial-gradient(
+            circle at 85% 35%,
+            rgba(155,123,255,.045),
+            transparent 27%
+        ),
+        linear-gradient(
+            135deg,
+            rgba(69,89,160,.045),
+            transparent 32%
+        ),
+        var(--bg);
+}
+
+.page {
+    width: min(1400px, calc(100% - 48px));
+    margin: auto;
+    padding: 30px 0 55px;
+}
+
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding-bottom: 22px;
+    margin-bottom: 34px;
+
+    border-bottom: 1px solid rgba(255,255,255,.055);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.logo {
+    width: 48px;
+    height: 48px;
+
+    display: grid;
+    place-items: center;
+
+    border-radius: 12px;
+
+    color: white;
+
+    background:
+        linear-gradient(
+            135deg,
+            var(--primary),
+            var(--secondary)
+        );
+
+    font-size: 20px;
+    font-weight: 900;
+
+    box-shadow:
+        0 8px 28px rgba(111,145,255,.18);
+}
+
+.brand h1 {
+    font-size: 27px;
+    letter-spacing: 3px;
+}
+
+.brand p {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.connection {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+
+    padding: 9px 14px;
+
+    border: 1px solid var(--border);
+    border-radius: 8px;
+
+    background: rgba(255,255,255,.02);
+
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.connection-indicator {
+    width: 7px;
+    height: 7px;
+
+    background: var(--danger);
+    border-radius: 50%;
+
+    box-shadow: 0 0 8px rgba(237,119,119,.35);
+}
+
+.connection.online .connection-indicator {
+    background: var(--success);
+
+    box-shadow: 0 0 8px rgba(85,212,155,.35);
+}
+
+
+/* =========================================================
+   GENERAL
+========================================================= */
+
+.section {
+    margin-top: 31px;
+}
+
+.section-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+
+    margin-bottom: 15px;
+}
+
+.eyebrow {
+    margin-bottom: 7px;
+
+    color: var(--primary-light);
+
+    font-size: 10px;
+    font-weight: 800;
+
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+}
+
+h2 {
+    font-size: 22px;
+    letter-spacing: -.4px;
+}
+
+.subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+    margin-top: 6px;
+}
+
+.panel {
+    border: 1px solid var(--border);
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(18,27,45,.97),
+            rgba(11,18,31,.97)
+        );
+
+    border-radius: var(--radius);
+
+    box-shadow:
+        0 18px 50px rgba(0,0,0,.16);
+}
+
+
+/* =========================================================
+   SNAPSHOT
+========================================================= */
+
+.snapshot {
+    overflow: hidden;
+}
+
+.snapshot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 18px 23px;
+
+    border-bottom:
+        1px solid rgba(255,255,255,.055);
+}
+
+.snapshot-heading-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.observation-badge {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+
+    padding: 6px 9px;
+
+    border: 1px solid rgba(111,145,255,.18);
+
+    background:
+        linear-gradient(
+            90deg,
+            rgba(111,145,255,.07),
+            rgba(155,123,255,.04)
+        );
+
+    color: var(--primary-light);
+
+    font-size: 8px;
+    font-weight: 800;
+
+    letter-spacing: .8px;
+    text-transform: uppercase;
+}
+
+.observation-indicator {
+    width: 6px;
+    height: 6px;
+
+    background:
+        linear-gradient(
+            135deg,
+            var(--primary),
+            var(--secondary)
+        );
+
+    border-radius: 50%;
+
+    box-shadow:
+        0 0 8px rgba(111,145,255,.4);
+}
+
+.snapshot-heading {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.snapshot-time {
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.snapshot-time strong {
+    color: #d2d9e8;
+    font-weight: 600;
+}
+
+
+/* =========================================================
+   SNAPSHOT VISUAL
+========================================================= */
+
+.snapshot-visual {
+    padding: 26px 23px 24px;
+}
+
+.snapshot-visual-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    margin-bottom: 18px;
+}
+
+.snapshot-visual-title span:first-child {
+    color: #b8c1d4;
+
+    font-size: 10px;
+    font-weight: 700;
+
+    letter-spacing: .8px;
+    text-transform: uppercase;
+}
+
+.snapshot-visual-title span:last-child {
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.snapshot-zones {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 13px;
+}
+
+.snapshot-zone {
+    min-height: 145px;
+
+    padding: 18px;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+
+    border:
+        1px solid rgba(255,255,255,.065);
+
+    border-radius: 12px;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(111,145,255,.035),
+            rgba(155,123,255,.012)
+        );
+
+    position: relative;
+    overflow: hidden;
+}
+
+.snapshot-zone::before {
+    content: "";
+
+    position: absolute;
+
+    top: 0;
+    left: 0;
+
+    width: 100%;
+    height: 3px;
+
+    background:
+        linear-gradient(
+            90deg,
+            var(--primary),
+            var(--secondary)
+        );
+
+    opacity: .8;
+}
+
+.snapshot-zone.crowded {
+    border-color:
+        rgba(237,119,119,.22);
+}
+
+.snapshot-zone.crowded::before {
+    background: var(--danger);
+}
+
+.snapshot-zone-name {
+    color: #dce3f1;
+
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.snapshot-zone-people {
+    color: var(--muted);
+
+    font-size: 10px;
+
+    margin-top: 4px;
+}
+
+.snapshot-zone-percentage {
+    margin-top: 20px;
+
+    font-size: 29px;
+    font-weight: 750;
+
+    letter-spacing: -1px;
+}
+
+.snapshot-zone-status {
+    margin-top: 4px;
+
+    color: var(--muted);
+
+    font-size: 9px;
+
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.snapshot-bar {
+    height: 5px;
+
+    margin-top: 13px;
+
+    background: rgba(255,255,255,.06);
+
+    overflow: hidden;
+}
+
+.snapshot-bar-fill {
+    height: 100%;
+    width: 0%;
+
+    background:
+        linear-gradient(
+            90deg,
+            var(--primary-dark),
+            var(--primary-light),
+            var(--secondary)
+        );
+
+    transition: width .4s ease;
+}
+
+.snapshot-zone.crowded .snapshot-bar-fill {
+    background: var(--danger);
+}
+
+
+/* =========================================================
+   SNAPSHOT EMPTY
+========================================================= */
+
+.snapshot-empty {
+    grid-column: 1 / -1;
+
+    min-height: 165px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+
+    gap: 8px;
+
+    border:
+        1px dashed rgba(111,145,255,.12);
+
+    border-radius: 10px;
+
+    background:
+        linear-gradient(
+            90deg,
+            transparent,
+            rgba(111,145,255,.025),
+            rgba(155,123,255,.018),
+            transparent
+        );
+
+    color: var(--muted);
+
+    font-size: 11px;
+}
+
+.snapshot-empty-icon {
+    width: 36px;
+    height: 36px;
+
+    display: grid;
+    place-items: center;
+
+    margin-bottom: 3px;
+
+    border:
+        1px solid rgba(111,145,255,.18);
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(111,145,255,.07),
+            rgba(155,123,255,.05)
+        );
+
+    color: var(--primary-light);
+
+    font-size: 14px;
+}
+
+.snapshot-empty strong {
+    color: #c1c9da;
+    font-size: 12px;
+}
+
+
+/* =========================================================
+   SUMMARY
+========================================================= */
+
+.snapshot-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+
+    border-top:
+        1px solid rgba(255,255,255,.055);
+}
+
+.summary-item {
+    padding: 19px 22px;
+
+    border-right:
+        1px solid rgba(255,255,255,.055);
+
+    transition: background .2s ease;
+}
+
+.summary-item:hover {
+    background:
+        rgba(111,145,255,.025);
+}
+
+.summary-item:last-child {
+    border-right: 0;
+}
+
+.summary-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.summary-icon {
+    width: 22px;
+    height: 22px;
+
+    display: grid;
+    place-items: center;
+
+    color: var(--primary-light);
+
+    font-size: 11px;
+}
+
+.summary-label {
+    color: var(--muted);
+
+    font-size: 8px;
+    font-weight: 700;
+
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.summary-value {
+    margin-top: 8px;
+
+    font-size: 22px;
+    font-weight: 750;
+}
+
+.summary-value.text {
+    font-size: 15px;
+    margin-top: 10px;
+}
+
+.summary-value.warning {
+    color: var(--warning);
+}
+
+.summary-value.danger {
+    color: var(--danger);
+}
+
+.summary-value.success {
+    color: var(--success);
+}
+
+
+/* =========================================================
+   CROWD ANALYTICS
+========================================================= */
+
+.analytics-layout {
+    display: grid;
+
+    grid-template-columns: 1.6fr .8fr;
+
+    gap: 15px;
+}
+
+.zone-panel,
+.ranking-panel {
+    padding: 22px;
+}
+
+.panel-heading {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.panel-description {
+    margin-top: 5px;
+    margin-bottom: 20px;
+
+    color: var(--muted);
+
+    font-size: 11px;
+}
+
+
+/* =========================================================
+   ZONES
+========================================================= */
+
+.zones {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.zone {
+    padding: 15px;
+
+    border:
+        1px solid rgba(255,255,255,.055);
+
+    border-radius: 10px;
+
+    background:
+        linear-gradient(
+            90deg,
+            rgba(111,145,255,.025),
+            rgba(155,123,255,.01)
+        );
+
+    transition:
+        border-color .2s ease,
+        background .2s ease;
+}
+
+.zone:hover {
+    border-color:
+        rgba(111,145,255,.16);
+
+    background:
+        rgba(111,145,255,.035);
+}
+
+.zone-top {
+    display: flex;
+    justify-content: space-between;
+
+    gap: 15px;
+
+    margin-bottom: 12px;
+}
+
+.zone-name {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.zone-info {
+    margin-top: 5px;
+
+    color: var(--muted);
+
+    font-size: 10px;
+}
+
+.percentage {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.bar {
+    height: 5px;
+
+    background: rgba(255,255,255,.06);
+
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    width: 0%;
+
+    background:
+        linear-gradient(
+            90deg,
+            var(--primary-dark),
+            var(--primary-light),
+            var(--secondary)
+        );
+
+    transition: width .4s ease;
+}
+
+.zone.crowded {
+    border-color:
+        rgba(237,119,119,.2);
+}
+
+.zone.crowded .bar-fill {
+    background: var(--danger);
+}
+
+.crowded-tag {
+    display: inline-block;
+
+    margin-left: 7px;
+
+    padding: 2px 6px;
+
+    border:
+        1px solid rgba(237,119,119,.18);
+
+    color: var(--danger);
+
+    font-size: 8px;
+    font-weight: 800;
+
+    letter-spacing: .5px;
+}
+
+
+/* =========================================================
+   RANKING
+========================================================= */
+
+.ranking-list {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+
+.rank {
+    display: flex;
+    align-items: center;
+
+    gap: 11px;
+
+    padding: 12px;
+
+    border:
+        1px solid rgba(255,255,255,.045);
+
+    border-radius: 10px;
+
+    background:
+        rgba(255,255,255,.018);
+}
+
+.rank-number {
+    width: 30px;
+    height: 30px;
+
+    display: grid;
+    place-items: center;
+
+    border:
+        1px solid var(--border-strong);
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(111,145,255,.07),
+            rgba(155,123,255,.05)
+        );
+
+    color: var(--primary-light);
+
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.rank-details {
+    flex: 1;
+}
+
+.rank-name {
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.rank-sub {
+    margin-top: 3px;
+
+    color: var(--muted);
+
+    font-size: 9px;
+}
+
+
+/* =========================================================
+   EMPTY
+========================================================= */
+
+.empty {
+    min-height: 100px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 28px 15px;
+
+    text-align: center;
+
+    color: var(--muted);
+
+    font-size: 11px;
+}
+
+
+/* =========================================================
+   PERSON SEARCH
+========================================================= */
+
+.search-panel {
+    padding: 25px;
+}
+
+.search-header {
+    display: flex;
+    align-items: center;
+
+    gap: 14px;
+
+    margin-bottom: 22px;
+}
+
+.search-marker {
+    width: 42px;
+    height: 42px;
+
+    display: grid;
+    place-items: center;
+
+    border:
+        1px solid var(--border-strong);
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(111,145,255,.09),
+            rgba(155,123,255,.06)
+        );
+
+    color: var(--primary-light);
+
+    font-size: 18px;
+    font-weight: 700;
+}
+
+label {
+    display: block;
+
+    margin-bottom: 8px;
+
+    color: #b7c0d1;
+
+    font-size: 10px;
+    font-weight: 750;
+
+    letter-spacing: .8px;
+    text-transform: uppercase;
+}
+
+textarea {
+    width: 100%;
+    min-height: 105px;
+
+    resize: vertical;
+
+    padding: 15px;
+
+    border:
+        1px solid rgba(255,255,255,.08);
+
+    border-radius: 8px;
+
+    background:
+        rgba(5,10,19,.65);
+
+    color: var(--text);
+
+    font: inherit;
+    font-size: 12px;
+
+    outline: none;
+
+    transition: .2s;
+}
+
+textarea:focus {
+    border-color:
+        rgba(111,145,255,.45);
+
+    box-shadow:
+        inset 3px 0 0 var(--primary),
+        0 0 0 1px rgba(155,123,255,.05);
+}
+
+textarea::placeholder {
+    color: #5e687b;
+}
+
+.search-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    gap: 15px;
+
+    margin-top: 13px;
+}
+
+.helper {
+    color: var(--muted);
+    font-size: 10px;
+}
+
+button {
+    border: 0;
+
+    border-radius: 7px;
+
+    cursor: pointer;
+
+    padding: 11px 18px;
+
+    font-size: 11px;
+    font-weight: 750;
+
+    transition: .18s ease;
+}
+
+button:hover {
+    transform: translateY(-1px);
+}
+
+button:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-primary {
+    color: white;
+
+    background:
+        linear-gradient(
+            135deg,
+            var(--primary),
+            #806eea
+        );
+
+    box-shadow:
+        0 7px 22px rgba(111,145,255,.14);
+}
+
+.btn-primary:hover {
+    box-shadow:
+        0 9px 26px rgba(111,145,255,.22);
+}
+
+.btn-confirm {
+    color: #04120c;
+    background: var(--success);
+}
+
+.btn-reject {
+    color: #ffd6d6;
+
+    background:
+        rgba(237,119,119,.11);
+
+    border:
+        1px solid rgba(237,119,119,.2);
+}
+
+
+/* =========================================================
+   SEARCH STATUS
+========================================================= */
+
+.search-status {
+    display: none;
+
+    margin-top: 19px;
+
+    padding: 16px;
+
+    border-left:
+        3px solid var(--primary);
+
+    border-radius: 6px;
+
+    background:
+        linear-gradient(
+            90deg,
+            rgba(111,145,255,.055),
+            rgba(155,123,255,.025)
+        );
+}
+
+.search-status.visible {
+    display: block;
+}
+
+.status-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.activity-indicator {
+    width: 18px;
+    height: 18px;
+
+    border:
+        2px solid rgba(111,145,255,.15);
+
+    border-top-color:
+        var(--primary);
+
+    border-right-color:
+        var(--secondary);
+
+    border-radius: 50%;
+
+    animation:
+        spin .8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.status-title {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.status-text {
+    margin-top: 4px;
+
+    color: var(--muted);
+
+    font-size: 10px;
+}
+
+
+/* =========================================================
+   CANDIDATE
+========================================================= */
+
+.candidate {
+    display: none;
+
+    margin-top: 20px;
+
+    overflow: hidden;
+
+    border:
+        1px solid var(--border-strong);
+
+    border-radius: 12px;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(111,145,255,.025),
+            rgba(155,123,255,.018)
+        );
+}
+
+.candidate.visible {
+    display: grid;
+
+    grid-template-columns:
+        250px 1fr;
+}
+
+.candidate-image {
+    min-height: 250px;
+
+    display: grid;
+    place-items: center;
+
+    overflow: hidden;
+
+    background: #060a12;
+
+    border-right:
+        1px solid rgba(255,255,255,.055);
+}
+
+.candidate-image img {
+    width: 100%;
+    height: 100%;
+
+    object-fit: cover;
+}
+
+.candidate-placeholder {
+    color: var(--muted-2);
+
+    font-size: 11px;
+}
+
+.candidate-content {
+    padding: 24px;
+}
+
+.candidate-label {
+    color: var(--primary-light);
+
+    font-size: 9px;
+    font-weight: 800;
+
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+.candidate-title {
+    margin-top: 7px;
+
+    font-size: 20px;
+}
+
+.confidence {
+    margin-top: 16px;
+
+    color: var(--muted);
+
+    font-size: 11px;
+}
+
+.confidence strong {
+    color: var(--text);
+}
+
+.candidate-actions {
+    display: flex;
+
+    gap: 10px;
+
+    margin-top: 21px;
+}
+
+
+/* =========================================================
+   CONFIRMED
+========================================================= */
+
+.confirmed {
+    display: none;
+
+    margin-top: 20px;
+
+    padding: 21px;
+
+    border-left:
+        3px solid var(--success);
+
+    border-radius: 6px;
+
+    background:
+        rgba(84,212,155,.045);
+}
+
+.confirmed.visible {
+    display: block;
+}
+
+.confirmed-title {
+    color: var(--success);
+
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.location-box {
+    margin-top: 14px;
+
+    padding: 15px;
+
+    border:
+        1px solid rgba(255,255,255,.055);
+
+    border-radius: 8px;
+
+    background:
+        rgba(0,0,0,.16);
+}
+
+.location-label {
+    color: var(--muted);
+
+    font-size: 9px;
+
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.location-value {
+    margin-top: 6px;
+
+    font-size: 13px;
+    font-weight: 650;
+}
+
+
+/* =========================================================
+   FOOTER
+========================================================= */
+
+footer {
+    margin-top: 27px;
+
+    padding-top: 20px;
+
+    border-top:
+        1px solid rgba(255,255,255,.045);
+
+    text-align: center;
+
+    color: #4e586c;
+
+    font-size: 9px;
+
+    letter-spacing: .6px;
+}
+
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 950px) {
+
+    .snapshot-zones {
+        grid-template-columns: 1fr;
+    }
+
+    .snapshot-summary {
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+
+    .analytics-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 650px) {
+
+    .page {
+        width: calc(100% - 24px);
+        padding-top: 18px;
+    }
+
+    header {
+        align-items: flex-start;
+        flex-direction: column;
+
+        gap: 14px;
+    }
+
+    .snapshot-header {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .snapshot-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .summary-item {
+        border-right: 0;
+
+        border-bottom:
+            1px solid rgba(255,255,255,.055);
+    }
+
+    .candidate.visible {
+        grid-template-columns: 1fr;
+    }
+
+    .candidate-image {
+        border-right: 0;
+
+        border-bottom:
+            1px solid rgba(255,255,255,.055);
+    }
+
+    .search-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .search-actions button {
+        width: 100%;
+    }
+
+    .candidate-actions {
+        flex-direction: column;
+    }
+}
+
+</style>
+</head>
+
+
+<body>
+
+<div class="page">
+
+
+<!-- ======================================================
+     HEADER
+====================================================== -->
+
+<header>
+
+    <div class="brand">
+
+        <div class="logo">
+            A
+        </div>
+
+        <div>
+
+            <h1>AWARE</h1>
+
+            <p>
+                Autonomous Crowd Intelligence & Person Assistance
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div
+        class="connection"
+        id="connectionStatus"
+    >
+
+        <span class="connection-indicator"></span>
+
+        <span id="connectionText">
+            Backend disconnected
+        </span>
+
+    </div>
+
+</header>
+
+
+
+<!-- ======================================================
+     LATEST SNAPSHOT
+====================================================== -->
+
+<section class="section">
+
+    <div class="section-title-row">
+
+        <div>
+
+            <div class="eyebrow">
+                Latest Drone Observation
+            </div>
+
+            <h2>
+                Crowd Analysis Snapshot
+            </h2>
+
+            <p class="subtitle">
+                A visual summary of the most recent crowd analysis
+                captured by the AWARE drone.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="panel snapshot">
+
+
+        <div class="snapshot-header">
+
+
+            <div class="snapshot-heading-wrap">
+
+                <div class="observation-badge">
+
+                    <span class="observation-indicator"></span>
+
+                    <span id="observationState">
+                        Latest Observation
+                    </span>
+
+                </div>
+
+
+                <div class="snapshot-heading">
+                    Area Overview
+                </div>
+
+            </div>
+
+
+            <div class="snapshot-time">
+
+                LAST ANALYZED:
+
+                <strong id="lastAnalyzed">
+                    No analysis received yet
+                </strong>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="snapshot-visual">
+
+
+            <div class="snapshot-visual-title">
+
+                <span>
+                    Occupancy Overview
+                </span>
+
+                <span>
+                    Latest completed observation
+                </span>
+
+            </div>
+
+
+            <div
+                class="snapshot-zones"
+                id="snapshotZones"
+            >
+
+                <div class="snapshot-empty">
+
+                    <div class="snapshot-empty-icon">
+                        ◫
+                    </div>
+
+                    <strong>
+                        Waiting for drone analysis
+                    </strong>
+
+                    The latest area snapshot will appear here.
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="snapshot-summary">
+
+
+            <div class="summary-item">
+
+                <div class="summary-header">
+
+                    <div class="summary-icon">
+                        ◉
+                    </div>
+
+                    <div class="summary-label">
+                        People Detected
+                    </div>
+
+                </div>
+
+                <div
+                    class="summary-value"
+                    id="totalPeople"
+                >
+                    —
+                </div>
+
+            </div>
+
+
+
+            <div class="summary-item">
+
+                <div class="summary-header">
+
+                    <div class="summary-icon">
+                        ↗
+                    </div>
+
+                    <div class="summary-label">
+                        Total Footfall
+                    </div>
+
+                </div>
+
+                <div
+                    class="summary-value"
+                    id="totalFootfall"
+                >
+                    —
+                </div>
+
+            </div>
+
+
+
+            <div class="summary-item">
+
+                <div class="summary-header">
+
+                    <div class="summary-icon">
+                        △
+                    </div>
+
+                    <div class="summary-label">
+                        Crowded Areas
+                    </div>
+
+                </div>
+
+                <div
+                    class="summary-value"
+                    id="crowdedAreas"
+                >
+                    —
+                </div>
+
+            </div>
+
+
+
+            <div class="summary-item">
+
+                <div class="summary-header">
+
+                    <div class="summary-icon">
+                        ≋
+                    </div>
+
+                    <div class="summary-label">
+                        Overall Crowd Level
+                    </div>
+
+                </div>
+
+                <div
+                    class="summary-value text"
+                    id="crowdLevel"
+                >
+                    Waiting
+                </div>
+
+            </div>
+
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- ======================================================
+     DETAILED ANALYTICS
+====================================================== -->
+
+<section class="section">
+
+    <div class="section-title-row">
+
+        <div>
+
+            <div class="eyebrow">
+                Detailed Analytics
+            </div>
+
+            <h2>
+                Crowd Analytics
+            </h2>
+
+            <p class="subtitle">
+                Detailed occupancy, visitor traffic and dwell-time
+                information from the latest analyzed observation.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="analytics-layout">
+
+
+        <div class="panel zone-panel">
+
+            <div class="panel-heading">
+                Area Occupancy
+            </div>
+
+            <div class="panel-description">
+                Occupancy and visitor activity by area.
+            </div>
+
+
+            <div
+                class="zones"
+                id="zonesContainer"
+            >
+
+                <div class="empty">
+                    No crowd analysis available yet.
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="panel ranking-panel">
+
+            <div class="panel-heading">
+                Most Visited Areas
+            </div>
+
+            <div class="panel-description">
+                Ranked by unique visitor footfall.
+            </div>
+
+
+            <div
+                class="ranking-list"
+                id="rankingContainer"
+            >
+
+                <div class="empty">
+                    Waiting for analytics.
+                </div>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+</section>
+
+
+
+<!-- ======================================================
+     PERSON SEARCH
+====================================================== -->
+
+<section class="section">
+
+    <div class="section-title-row">
+
+        <div>
+
+            <div class="eyebrow">
+                Person Assistance
+            </div>
+
+            <h2>
+                Find a Missing Person
+            </h2>
+
+            <p class="subtitle">
+                Describe the person's visible appearance.
+                AWARE will search for matching candidates
+                using the drone camera.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="panel search-panel">
+
+
+        <div class="search-header">
+
+            <div class="search-marker">
+                ⌖
+            </div>
+
+
+            <div>
+
+                <div class="panel-heading">
+                    Start Person Search
+                </div>
+
+                <div
+                    class="panel-description"
+                    style="margin-bottom:0"
+                >
+                    Enter visible characteristics that can help
+                    identify the person.
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <label for="personDescription">
+            Person Description
+        </label>
+
+
+        <textarea
+            id="personDescription"
+            placeholder="Example: black shirt, blue jeans, black backpack..."
+        ></textarea>
+
+
+        <div class="search-actions">
+
+            <div class="helper">
+                Use visible characteristics such as clothing,
+                colors and accessories.
+            </div>
+
+
+            <button
+                class="btn-primary"
+                id="startSearchButton"
+                onclick="startSearch()"
+            >
+                Start Search
+            </button>
+
+        </div>
+
+
+
+        <!-- SEARCHING -->
+
+        <div
+            class="search-status"
+            id="searchStatus"
+        >
+
+            <div class="status-row">
+
+                <div class="activity-indicator"></div>
+
+                <div>
+
+                    <div class="status-title">
+                        Searching for matching candidates
+                    </div>
+
+                    <div
+                        class="status-text"
+                        id="searchStatusText"
+                    >
+                        AWARE is analyzing the drone camera feed...
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- CANDIDATE -->
+
+        <div
+            class="candidate"
+            id="candidateCard"
+        >
+
+
+            <div
+                class="candidate-image"
+                id="candidateImageContainer"
+            >
+
+                <div class="candidate-placeholder">
+                    Candidate image
+                </div>
+
+            </div>
+
+
+            <div class="candidate-content">
+
+                <div class="candidate-label">
+                    Candidate Detected
+                </div>
+
+
+                <div class="candidate-title">
+                    Possible Match Found
+                </div>
+
+
+                <div class="confidence">
+
+                    Match confidence:
+
+                    <strong id="candidateConfidence">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <p class="subtitle">
+                    Review the detected person and confirm whether
+                    this is the person being searched for.
+                </p>
+
+
+                <div class="candidate-actions">
+
+
+                    <button
+                        class="btn-confirm"
+                        onclick="confirmCandidate()"
+                    >
+                        Confirm Person
+                    </button>
+
+
+                    <button
+                        class="btn-reject"
+                        onclick="rejectCandidate()"
+                    >
+                        Reject & Continue Search
+                    </button>
+
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- CONFIRMED -->
+
+        <div
+            class="confirmed"
+            id="confirmedCard"
+        >
+
+            <div class="confirmed-title">
+                ✓ Person Confirmed
+            </div>
+
+
+            <p class="subtitle">
+                The candidate has been confirmed.
+                AWARE has returned the detected location.
+            </p>
+
+
+            <div class="location-box">
+
+                <div class="location-label">
+                    Person Location
+                </div>
+
+
+                <div
+                    class="location-value"
+                    id="personLocation"
+                >
+                    Waiting for location...
+                </div>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+</section>
+
+
+
+<footer>
+    AWARE • Autonomous Drone Intelligence System
+</footer>
+
+
+</div>
+
+
+
+<script>
+
+/* =========================================================
+   CONFIG
+========================================================= */
+
+const WS_URL = "ws://localhost:8000/ws";
+
+let ws = null;
+let reconnectTimer = null;
+
+
+/* =========================================================
+   WEBSOCKET
+========================================================= */
+
+function connectWebSocket() {
+
+    try {
+
+        ws = new WebSocket(WS_URL);
+
+
+        ws.onopen = () => {
+
+            const status =
+                document.getElementById("connectionStatus");
+
+            status.classList.add("online");
+
+
+            document
+                .getElementById("connectionText")
+                .textContent = "System connected";
+
+
+            console.log("[AWARE] Backend connected");
+
+        };
+
+
+        ws.onmessage = (event) => {
+
+            try {
+
+                const data =
+                    JSON.parse(event.data);
+
+
+                console.log(
+                    "[AWARE] Message:",
+                    data
+                );
+
+
+                handleBackendMessage(data);
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    "[AWARE] Invalid backend message:",
+                    error
+                );
+
+            }
+
+        };
+
+
+        ws.onerror = () => {
+
+            ws.close();
+
+        };
+
+
+        ws.onclose = () => {
+
+            const status =
+                document.getElementById(
+                    "connectionStatus"
+                );
+
+
+            status.classList.remove("online");
+
+
+            document
+                .getElementById("connectionText")
+                .textContent =
+                "Backend disconnected — reconnecting...";
+
+
+            clearTimeout(reconnectTimer);
+
+
+            reconnectTimer =
+                setTimeout(
+                    connectWebSocket,
+                    2000
+                );
+
+        };
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "[AWARE] WebSocket error:",
+            error
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   BACKEND ROUTER
+========================================================= */
+
+function handleBackendMessage(data) {
+
+
+    if (
+        data.type === "crowd_analytics" ||
+        data.analytics
+    ) {
+
+        updateCrowdAnalytics(
+            data.analytics || data
+        );
+
+    }
+
+
+    if (data.type === "candidate") {
+
+        showCandidate(data);
+
+    }
+
+
+    if (data.type === "search_status") {
+
+        updateSearchStatus(
+            data.message || "Searching..."
+        );
+
+    }
+
+
+    if (data.type === "person_location") {
+
+        showConfirmedLocation(
+
+            data.location ||
+            data.coordinates ||
+            "Location received"
+
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   CROWD ANALYTICS
+========================================================= */
+
+function updateCrowdAnalytics(data) {
+
+
+    const zones =
+        data.zones ||
+        data.zone_analytics ||
+        data.areas ||
+        {};
+
+
+    const zoneEntries =
+        Array.isArray(zones)
+
+        ? zones.map(
+            (zone, index) => [
+
+                zone.name ||
+                zone.zone ||
+                zone.area ||
+                `Area ${index + 1}`,
+
+                zone
+
+            ]
+        )
+
+        : Object.entries(zones);
+
+
+
+    let totalPeople =
+        Number(
+            data.total_people ??
+            data.people ??
+            0
+        );
+
+
+    let totalFootfall =
+        Number(
+            data.total_footfall ??
+            data.footfall ??
+            0
+        );
+
+
+
+    if (
+        data.total_people === undefined &&
+        data.people === undefined
+    ) {
+
+        totalPeople =
+            zoneEntries.reduce(
+
+                (sum, [, zone]) =>
+
+                    sum +
+
+                    Number(
+                        zone.current_people ??
+                        zone.people ??
+                        zone.count ??
+                        0
+                    ),
+
+                0
+            );
+
+    }
+
+
+
+    if (
+        data.total_footfall === undefined &&
+        data.footfall === undefined
+    ) {
+
+        totalFootfall =
+            zoneEntries.reduce(
+
+                (sum, [, zone]) =>
+
+                    sum +
+
+                    Number(
+                        zone.unique_footfall ??
+                        zone.footfall ??
+                        0
+                    ),
+
+                0
+            );
+
+    }
+
+
+
+    let crowdedCount = 0;
+
+    let occupancyValues = [];
+
+
+    zoneEntries.forEach(([, zone]) => {
+
+        const occupancy =
+            getOccupancy(zone);
+
+
+        occupancyValues.push(occupancy);
+
+
+        if (
+            zone.crowded === true ||
+            zone.is_crowded === true ||
+            occupancy >= 80
+        ) {
+
+            crowdedCount++;
+
+        }
+
+    });
+
+
+
+    document
+        .getElementById("totalPeople")
+        .textContent = totalPeople;
+
+
+    document
+        .getElementById("totalFootfall")
+        .textContent = totalFootfall;
+
+
+    document
+        .getElementById("crowdedAreas")
+        .textContent = crowdedCount;
+
+
+
+    let averageOccupancy = 0;
+
+
+    if (occupancyValues.length) {
+
+        averageOccupancy =
+            occupancyValues.reduce(
+                (sum, value) => sum + value,
+                0
+            )
+            /
+            occupancyValues.length;
+
+    }
+
+
+    const crowdLevel =
+        getCrowdLevel(averageOccupancy);
+
+
+    const crowdLevelElement =
+        document.getElementById("crowdLevel");
+
+
+    crowdLevelElement.textContent =
+        crowdLevel.label;
+
+
+    crowdLevelElement.className =
+        `summary-value text ${crowdLevel.className}`;
+
+
+
+    const timestamp =
+
+        data.timestamp ||
+        data.last_analyzed ||
+        new Date().toISOString();
+
+
+    document
+        .getElementById("lastAnalyzed")
+        .textContent =
+        formatTimestamp(timestamp);
+
+
+    document
+        .getElementById("observationState")
+        .textContent =
+        "Latest Observation";
+
+
+    renderSnapshot(zoneEntries);
+
+    renderZones(zoneEntries);
+
+    renderRanking(zoneEntries);
+
+}
+
+
+/* =========================================================
+   OCCUPANCY HELPER
+========================================================= */
+
+function getOccupancy(zone) {
+
+
+    const people =
+        Number(
+            zone.current_people ??
+            zone.people ??
+            zone.count ??
+            0
+        );
+
+
+    const capacity =
+        Number(
+            zone.capacity ??
+            0
+        );
+
+
+    let occupancy =
+        Number(
+            zone.occupancy ??
+            zone.occupancy_percent ??
+            0
+        );
+
+
+    if (
+        occupancy > 0 &&
+        occupancy <= 1
+    ) {
+
+        occupancy *= 100;
+
+    }
+
+
+    if (
+        !occupancy &&
+        capacity > 0
+    ) {
+
+        occupancy =
+            (people / capacity) * 100;
+
+    }
+
+
+    return Math.max(
+        0,
+        Math.min(100, occupancy)
+    );
+
+}
+
+
+/* =========================================================
+   CROWD LEVEL
+========================================================= */
+
+function getCrowdLevel(occupancy) {
+
+
+    if (occupancy >= 80) {
+
+        return {
+            label: "High",
+            className: "danger"
+        };
+
+    }
+
+
+    if (occupancy >= 50) {
+
+        return {
+            label: "Moderate",
+            className: "warning"
+        };
+
+    }
+
+
+    return {
+        label: "Low",
+        className: "success"
+    };
+
+}
+
+
+/* =========================================================
+   SNAPSHOT
+========================================================= */
+
+function renderSnapshot(zoneEntries) {
+
+
+    const container =
+        document.getElementById(
+            "snapshotZones"
+        );
+
+
+    container.innerHTML = "";
+
+
+    if (!zoneEntries.length) {
+
+        container.innerHTML = `
+
+            <div class="snapshot-empty">
+
+                <div class="snapshot-empty-icon">
+                    ◫
+                </div>
+
+                <strong>
+                    Waiting for drone analysis
+                </strong>
+
+                The latest area snapshot
+                will appear here.
+
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+
+    zoneEntries.forEach(
+        ([name, zone]) => {
+
+
+            const people =
+                Number(
+                    zone.current_people ??
+                    zone.people ??
+                    zone.count ??
+                    0
+                );
+
+
+            const occupancy =
+                getOccupancy(zone);
+
+
+            const crowded =
+                zone.crowded === true ||
+                zone.is_crowded === true ||
+                occupancy >= 80;
+
+
+            let level;
+
+
+            if (crowded) {
+
+                level = "Crowded";
+
+            }
+
+            else if (occupancy >= 50) {
+
+                level = "Moderate";
+
+            }
+
+            else {
+
+                level = "Low";
+
+            }
+
+
+
+            const element =
+                document.createElement("div");
+
+
+            element.className =
+                crowded
+
+                ? "snapshot-zone crowded"
+
+                : "snapshot-zone";
+
+
+            element.innerHTML = `
+
+                <div>
+
+                    <div class="snapshot-zone-name">
+                        ${escapeHtml(name)}
+                    </div>
+
+                    <div class="snapshot-zone-people">
+                        ${people} people detected
+                    </div>
+
+                </div>
+
+
+                <div>
+
+                    <div class="snapshot-zone-percentage">
+                        ${occupancy.toFixed(0)}%
+                    </div>
+
+                    <div class="snapshot-zone-status">
+                        ${level}
+                    </div>
+
+
+                    <div class="snapshot-bar">
+
+                        <div
+                            class="snapshot-bar-fill"
+                            style="width:${occupancy}%"
+                        ></div>
+
+                    </div>
+
+                </div>
+            `;
+
+
+            container.appendChild(element);
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   DETAILED ZONES
+========================================================= */
+
+function renderZones(zoneEntries) {
+
+
+    const container =
+        document.getElementById(
+            "zonesContainer"
+        );
+
+
+    container.innerHTML = "";
+
+
+    if (!zoneEntries.length) {
+
+        container.innerHTML = `
+
+            <div class="empty">
+                No area analytics available.
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+
+    zoneEntries.forEach(
+        ([name, zone]) => {
+
+
+            const people =
+                Number(
+                    zone.current_people ??
+                    zone.people ??
+                    zone.count ??
+                    0
+                );
+
+
+            const occupancy =
+                getOccupancy(zone);
+
+
+            const footfall =
+                Number(
+                    zone.unique_footfall ??
+                    zone.footfall ??
+                    0
+                );
+
+
+            const dwell =
+                Number(
+                    zone.average_dwell ??
+                    zone.avg_dwell ??
+                    zone.dwell_time ??
+                    0
+                );
+
+
+            const crowded =
+                zone.crowded === true ||
+                zone.is_crowded === true ||
+                occupancy >= 80;
+
+
+
+            const element =
+                document.createElement("div");
+
+
+            element.className =
+                crowded
+
+                ? "zone crowded"
+
+                : "zone";
+
+
+            element.innerHTML = `
+
+                <div class="zone-top">
+
+                    <div>
+
+                        <div class="zone-name">
+
+                            ${escapeHtml(name)}
+
+                            ${
+                                crowded
+
+                                ? `
+                                    <span class="crowded-tag">
+                                        CROWDED
+                                    </span>
+                                  `
+
+                                : ""
+                            }
+
+                        </div>
+
+
+                        <div class="zone-info">
+
+                            ${people} people
+
+                            &nbsp; • &nbsp;
+
+                            ${footfall} visitors
+
+                            &nbsp; • &nbsp;
+
+                            Avg. dwell
+                            ${formatDwell(dwell)}
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="percentage">
+
+                        ${occupancy.toFixed(0)}%
+
+                    </div>
+
+                </div>
+
+
+                <div class="bar">
+
+                    <div
+                        class="bar-fill"
+                        style="width:${occupancy}%"
+                    ></div>
+
+                </div>
+            `;
+
+
+            container.appendChild(element);
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   RANKING
+========================================================= */
+
+function renderRanking(zoneEntries) {
+
+
+    const container =
+        document.getElementById(
+            "rankingContainer"
+        );
+
+
+    const ranking =
+        zoneEntries
+
+            .map(
+                ([name, zone]) => ({
+
+                    name,
+
+                    footfall:
+                        Number(
+                            zone.unique_footfall ??
+                            zone.footfall ??
+                            0
+                        ),
+
+                    dwell:
+                        Number(
+                            zone.average_dwell ??
+                            zone.avg_dwell ??
+                            zone.dwell_time ??
+                            0
+                        )
+
+                })
+            )
+
+            .sort(
+                (a, b) =>
+                    b.footfall - a.footfall
+            );
+
+
+    container.innerHTML = "";
+
+
+    if (!ranking.length) {
+
+        container.innerHTML = `
+
+            <div class="empty">
+                No ranking available.
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+
+    ranking.forEach(
+        (zone, index) => {
+
+
+            const element =
+                document.createElement("div");
+
+
+            element.className = "rank";
+
+
+            element.innerHTML = `
+
+                <div class="rank-number">
+                    ${String(index + 1).padStart(2, "0")}
+                </div>
+
+
+                <div class="rank-details">
+
+                    <div class="rank-name">
+                        ${escapeHtml(zone.name)}
+                    </div>
+
+
+                    <div class="rank-sub">
+
+                        ${zone.footfall}
+                        unique visitors
+
+                        • Avg. dwell
+                        ${formatDwell(zone.dwell)}
+
+                    </div>
+
+                </div>
+            `;
+
+
+            container.appendChild(element);
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   START PERSON SEARCH
+========================================================= */
+
+function startSearch() {
+
+
+    const description =
+
+        document
+            .getElementById(
+                "personDescription"
+            )
+            .value
+            .trim();
+
+
+    if (!description) {
+
+        alert(
+            "Please enter the person's description."
+        );
+
+        return;
+
+    }
+
+
+
+    document
+        .getElementById("candidateCard")
+        .classList.remove("visible");
+
+
+    document
+        .getElementById("confirmedCard")
+        .classList.remove("visible");
+
+
+    document
+        .getElementById("searchStatus")
+        .classList.add("visible");
+
+
+
+    updateSearchStatus(
+        "AWARE is analyzing the drone camera feed..."
+    );
+
+
+
+    sendMessage({
+
+        type: "start_person_search",
+
+        description: description
+
+    });
+
+}
+
+
+/* =========================================================
+   SEARCH STATUS
+========================================================= */
+
+function updateSearchStatus(message) {
+
+
+    document
+        .getElementById("searchStatus")
+        .classList.add("visible");
+
+
+    document
+        .getElementById("searchStatusText")
+        .textContent = message;
+
+}
+
+
+/* =========================================================
+   CANDIDATE
+========================================================= */
+
+function showCandidate(data) {
+
+
+    document
+        .getElementById("searchStatus")
+        .classList.remove("visible");
+
+
+    const card =
+        document.getElementById(
+            "candidateCard"
+        );
+
+
+    card.classList.add("visible");
+
+
+
+    let confidence =
+        Number(
+            data.confidence ??
+            data.score ??
+            0
+        );
+
+
+    if (confidence <= 1) {
+
+        confidence *= 100;
+
+    }
+
+
+    document
+        .getElementById(
+            "candidateConfidence"
+        )
+        .textContent =
+        `${confidence.toFixed(1)}%`;
+
+
+
+    const imageContainer =
+        document.getElementById(
+            "candidateImageContainer"
+        );
+
+
+    const image =
+
+        data.image ||
+        data.image_url ||
+        data.frame;
+
+
+
+    if (image) {
+
+        imageContainer.innerHTML = `
+
+            <img
+                src="${escapeHtml(image)}"
+                alt="Detected candidate"
+            >
+        `;
+
+    }
+
+}
+
+
+/* =========================================================
+   CONFIRM
+========================================================= */
+
+function confirmCandidate() {
+
+
+    sendMessage({
+        type: "confirm_candidate"
+    });
+
+
+    document
+        .getElementById("candidateCard")
+        .classList.remove("visible");
+
+
+    document
+        .getElementById("confirmedCard")
+        .classList.add("visible");
+
+
+    document
+        .getElementById("personLocation")
+        .textContent =
+        "Waiting for drone location...";
+
+}
+
+
+/* =========================================================
+   REJECT
+========================================================= */
+
+function rejectCandidate() {
+
+
+    sendMessage({
+        type: "reject_candidate"
+    });
+
+
+    document
+        .getElementById("candidateCard")
+        .classList.remove("visible");
+
+
+    document
+        .getElementById("searchStatus")
+        .classList.add("visible");
+
+
+    updateSearchStatus(
+        "Candidate rejected. Searching for another match..."
+    );
+
+}
+
+
+/* =========================================================
+   LOCATION
+========================================================= */
+
+function showConfirmedLocation(location) {
+
+
+    document
+        .getElementById("searchStatus")
+        .classList.remove("visible");
+
+
+    document
+        .getElementById("candidateCard")
+        .classList.remove("visible");
+
+
+    document
+        .getElementById("confirmedCard")
+        .classList.add("visible");
+
+
+
+    let text = location;
+
+
+    if (
+        typeof location === "object"
+    ) {
+
+
+        if (
+            location.latitude !== undefined &&
+            location.longitude !== undefined
+        ) {
+
+            text =
+                `${location.latitude}, ${location.longitude}`;
+
+        }
+
+
+        else if (
+            location.lat !== undefined &&
+            location.lon !== undefined
+        ) {
+
+            text =
+                `${location.lat}, ${location.lon}`;
+
+        }
+
+
+        else {
+
+            text =
+                JSON.stringify(location);
+
+        }
+
+    }
+
+
+
+    document
+        .getElementById("personLocation")
+        .textContent = text;
+
+}
+
+
+/* =========================================================
+   SEND
+========================================================= */
+
+function sendMessage(payload) {
+
+
+    if (
+        ws &&
+        ws.readyState === WebSocket.OPEN
+    ) {
+
+        ws.send(
+            JSON.stringify(payload)
+        );
+
+    }
+
+
+    else {
+
+        console.warn(
+            "[AWARE] Backend is not connected.",
+            payload
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function formatTimestamp(timestamp) {
+
+
+    try {
+
+
+        const date =
+            new Date(timestamp);
+
+
+        if (
+            Number.isNaN(
+                date.getTime()
+            )
+        ) {
+
+            return timestamp;
+
+        }
+
+
+        return date.toLocaleString(
+
+            undefined,
+
+            {
+                dateStyle: "medium",
+                timeStyle: "short"
+            }
+
+        );
+
+    }
+
+
+    catch {
+
+        return timestamp;
+
+    }
+
+}
+
+
+
+function formatDwell(seconds) {
+
+
+    if (!seconds) {
+
+        return "—";
+
+    }
+
+
+    if (seconds < 60) {
+
+        return `${seconds.toFixed(1)} sec`;
+
+    }
+
+
+    return `${(seconds / 60).toFixed(1)} min`;
+
+}
+
+
+
+function escapeHtml(value) {
+
+
+    return String(value)
+
+        .replaceAll("&", "&amp;")
+
+        .replaceAll("<", "&lt;")
+
+        .replaceAll(">", "&gt;")
+
+        .replaceAll('"', "&quot;")
+
+        .replaceAll("'", "&#039;");
+
+}
+
+
+/* =========================================================
+   CONNECT
+========================================================= */
+
+connectWebSocket();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,17 @@
+fastapi==0.115.*
+uvicorn[standard]==0.30.*
+websockets==13.*
+pydantic==2.*
+python-multipart==0.0.*
+
+opencv-python==4.*
+opencv-contrib-python==4.*
+numpy==1.26.*
+torch
+torchvision
+transformers
+openai
+loguru
+Pillow
+
+# Plus CloudTrack itself — see README.md for the clone/install step.
