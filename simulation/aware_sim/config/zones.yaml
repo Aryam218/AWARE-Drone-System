@@ -1,0 +1,116 @@
+# =====================================================================
+# AWARE — venue blueprint (single source of truth)
+# Read by:  scripts/generate_world.py  -> builds the Gazebo world
+#           crowd analytics (later)     -> counts people per zone
+#
+# Frame: Gazebo world, ENU, meters.  x = East, y = North, origin = floor center.
+# Floor spans x: -40..40, y: -25..25
+# yaw: radians, 0 = booth opening faces East (+x), 3.1416 = faces West
+# =====================================================================
+
+venue:
+  name: aware_expo
+  floor_size: [80, 50]        # [x length, y width] in meters
+  location:                   # where the world origin sits on Earth
+    latitude: 24.7136         # placeholder: central Riyadh
+    longitude: 46.6753
+    elevation: 612
+
+# ---------------------------------------------------------------------
+# BOOTHS: physical structures (what the camera sees)
+# Open-top U shape: back wall + 2 side walls + counter at the front.
+# No roof on purpose: a top-down camera must see people inside.
+# ---------------------------------------------------------------------
+booths:
+  - id: booth_a
+    pose: [-30, -12, 0]         # [x, y, yaw]
+    size: [6, 8]                # [depth, width]
+    wall_height: 3.0
+    color: [0.85, 0.25, 0.25]   # red
+  - id: booth_b
+    pose: [-30, 6, 0]
+    size: [6, 8]
+    wall_height: 3.0
+    color: [0.25, 0.45, 0.85]   # blue
+  - id: booth_c
+    pose: [30, -12, 3.1416]
+    size: [6, 8]
+    wall_height: 3.0
+    color: [0.25, 0.70, 0.35]   # green
+  - id: booth_d
+    pose: [30, 6, 3.1416]
+    size: [6, 8]
+    wall_height: 3.0
+    color: [0.90, 0.65, 0.15]   # amber
+
+# ---------------------------------------------------------------------
+# LANDMARKS: other static structures
+# ---------------------------------------------------------------------
+stage:
+  pose: [0, 21, 0]              # [x, y, yaw]
+  size: [12, 5, 1.0]            # [x, y, height]
+
+entrance_gate:
+  pose: [0, -25, 0]
+  width: 12                     # distance between pillars
+  height: 5
+
+# Drone take-off / landing pad, OUTSIDE the Expo floor (never above the crowd).
+# The drone is spawned here with PX4_GZ_MODEL_POSE (see the launch routine).
+launch_pad:
+  pose: [0, -33, 0]             # [x, y, yaw]: 8 m south of the entrance gate
+  size: 4                       # square, meters
+
+# ---------------------------------------------------------------------
+# ZONES: areas the analytics measures (invisible in the real venue)
+# Polygon points go counter-clockwise, [x, y].
+# capacity = max comfortable people -> occupancy % = count / capacity
+# type:  booth_front -> footfall + dwell time
+#        area        -> count + density alerts
+# Booth zones cover the VISITOR area in front of the counter,
+# not the structure itself.
+# ---------------------------------------------------------------------
+zones:
+  - id: entrance
+    type: area
+    capacity: 60
+    polygon: [[-6, -25], [6, -25], [6, -19], [-6, -19]]
+
+  - id: walkway
+    type: area
+    capacity: 120
+    polygon: [[-4, -19], [4, -19], [4, 4], [-4, 4]]
+
+  - id: plaza
+    type: area
+    capacity: 250
+    polygon: [[-14, 4], [14, 4], [14, 18.5], [-14, 18.5]]
+
+  - id: booth_a_front
+    type: booth_front
+    booth: booth_a
+    capacity: 25
+    polygon: [[-27, -16], [-22, -16], [-22, -8], [-27, -8]]
+
+  - id: booth_b_front
+    type: booth_front
+    booth: booth_b
+    capacity: 25
+    polygon: [[-27, 2], [-22, 2], [-22, 10], [-27, 10]]
+
+  - id: booth_c_front
+    type: booth_front
+    booth: booth_c
+    capacity: 25
+    polygon: [[22, -16], [27, -16], [27, -8], [22, -8]]
+
+  - id: booth_d_front
+    type: booth_front
+    booth: booth_d
+    capacity: 25
+    polygon: [[22, 2], [27, 2], [27, 10], [22, 10]]
+
+# Colors used only when the world is generated with --debug-zones
+zone_debug_colors:
+  area: [0.2, 0.6, 1.0]
+  booth_front: [1.0, 0.3, 0.8]

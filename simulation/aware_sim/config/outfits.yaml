@@ -1,0 +1,65 @@
+# =====================================================================
+# AWARE — outfits (the COSTUMES)
+# zones.yaml  = the stage       crowd.yaml = the cast (who goes where)
+# outfits.yaml = the costumes   (what everyone wears)
+#
+# Both skins (walk.dae for walkers, talk_b.dae for standers) paint clothes with
+# flat colors in two "paint pots" (COLLADA effects):
+#     top    -> effect id containing "sweater"  (sweater-green / sweater-blue)
+#     bottom -> effect id containing "jeans"    (jeans-blue / jeans-gray)
+# make_outfits.py copies each skin once per outfit and repaints only those.
+#
+# Build the files:   python3 scripts/make_outfits.py
+# =====================================================================
+
+# Which effects count as "top" / "bottom" (matched by substring in the effect id)
+effect_keywords:
+  top: [sweater, shirt]
+  bottom: [jeans, pants, trousers]
+
+# Named colors, RGB 0..1 (the "crayon box")
+colors:
+  white:    [0.85, 0.85, 0.85]
+  black:    [0.03, 0.03, 0.03]
+  navy:     [0.04, 0.08, 0.30]
+  sky_blue: [0.30, 0.55, 0.85]
+  green:    [0.10, 0.40, 0.12]
+  yellow:   [0.90, 0.75, 0.10]
+  purple:   [0.35, 0.15, 0.50]
+  grey:     [0.40, 0.40, 0.40]
+  beige:    [0.70, 0.60, 0.45]
+  teal:     [0.01, 0.23, 0.25]
+  jeans:    [0.06, 0.09, 0.35]
+  khaki:    [0.50, 0.45, 0.30]
+  red:      [0.85, 0.05, 0.05]   # reserved for the missing person (see below)
+
+# Crowd outfits. weight = how common (relative).
+# top == bottom approximates full-length traditional dress seen from above:
+# white thobe / black abaya are very common at events in Saudi Arabia.
+#
+# PERFORMANCE (measured, 248 people, RTX 4060 laptop):
+#   1 outfit  (3 skin files)   -> RTF ~1.0
+#   8 outfits (17 skin files)  -> RTF >= 0.9  <- current choice
+#   12 outfits (25 skin files) -> RTF ~0.04
+# Every different skin costs rendering time for every frame. Re-measure RTF
+# after enabling more outfits.
+crowd:
+  - {name: thobe,        top: white,    bottom: white, weight: 5}
+  - {name: abaya,        top: black,    bottom: black, weight: 5}
+#  - {name: white_jeans,  top: white,    bottom: jeans, weight: 2}
+  - {name: sky_jeans,    top: sky_blue, bottom: jeans, weight: 2}
+  - {name: green_khaki,  top: green,    bottom: khaki, weight: 1}
+#  - {name: yellow_jeans, top: yellow,   bottom: jeans, weight: 1}
+  - {name: purple_black, top: purple,   bottom: black, weight: 1}
+  - {name: beige_jeans,  top: beige,    bottom: jeans, weight: 1}
+  - {name: grey_black,   top: grey,     bottom: black, weight: 1}
+#  - {name: navy_khaki,   top: navy,     bottom: khaki, weight: 1}
+  - {name: black_jeans,  top: black,    bottom: jeans, weight: 1}
+#  - {name: staff_teal,   top: teal,     bottom: black, weight: 1}   # event staff
+
+# The missing person's outfit: its TOP color may appear on NOBODY else,
+# so "person in a red top" has exactly one correct answer.
+missing_person: {name: missing_red, top: red, bottom: white}
+
+# Where the repainted skins are written (relative to the aware_sim package)
+output_dir: models/aware_people/meshes

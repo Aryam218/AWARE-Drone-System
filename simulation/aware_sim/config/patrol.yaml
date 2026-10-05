@@ -1,0 +1,22 @@
+# =====================================================================
+# AWARE — autonomous patrol (lawnmower pattern)
+# Read by scripts/patrol_plan.py (geometry) and scripts/patrol.py (flight).
+# The area to cover comes from zones.yaml (floor_size), the launch point
+# from zones.yaml (launch_pad), the Earth origin from zones.yaml (location).
+# =====================================================================
+
+altitude_m: 10        # height above the launch pad. Trade-off:
+                      #   higher = wider view, but each person = fewer pixels
+speed_m_s: 4          # ground speed along the strips
+overlap: 0.2          # 20 % of each strip's width is also seen by the next strip
+loops: 2              # times the full pattern is flown before returning
+end_with: rtl         # rtl = return to the launch pad and land | hold = hover
+
+# Camera geometry, copied from PX4's mono_cam model.sdf
+camera:
+  hfov_rad: 1.74      # horizontal field of view
+  width: 1280         # pixels
+  height: 960
+
+# MAVLink connection to PX4 SITL (PX4 sends to UDP port 14540 for APIs)
+connection: udpin://0.0.0.0:14540
