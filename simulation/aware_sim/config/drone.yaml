@@ -1,0 +1,19 @@
+# =====================================================================
+# AWARE — our drone model (aware_x500)
+#   = PX4's x500 frame, UNCHANGED  +  our own camera copy (aware_cam)
+# Build / update it:   python3 scripts/make_drone.py
+# PX4's own model files are never edited.
+# =====================================================================
+
+model_name: aware_x500      # spawned in Gazebo as aware_x500_0
+
+camera:
+  pitch_deg: 45             # angle BELOW the horizon: 90 = straight down, 0 = straight ahead
+  update_rate: 15           # frames per second (PX4's mono_cam: 30). 15 is enough for tracking
+  far_clip_m: 80            # nothing farther than this is rendered (PX4's mono_cam: 3000).
+                            # A tilted camera sees far ahead: limiting it saves a lot of GPU
+  # copied from PX4's mono_cam model.sdf (keep unless you mean to change the lens)
+  hfov_rad: 1.74
+  width: 1280
+  height: 960
+  mount_offset_m: [0, 0, 0.10]   # where the camera sits on the frame (x, y, z)

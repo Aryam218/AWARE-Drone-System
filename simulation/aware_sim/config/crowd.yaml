@@ -1,0 +1,66 @@
+# =====================================================================
+# AWARE — crowd scenarios (the CAST)
+# zones.yaml = the stage (never changes between tests)
+# crowd.yaml = who is on stage and what they do (changes per test)
+#
+# Generate a scenario:  python3 scripts/generate_world.py --scenario normal
+# =====================================================================
+
+actor:
+  # Animated people from Gazebo Fuel. Downloaded once, then cached in ~/.gz/fuel
+  # WALKERS (visitors, missing person): walk cycle synced to distance moved
+  skin: https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae
+  hip_height: 1.0         # skin origin is at the hips; raise/lower if feet float or sink
+  # STANDERS (audience, hotspot crowds): talk_b.dae as BOTH skin and animation.
+  # (Tried: walker skin + separate talk_b animation file -> Gazebo reported
+  #  "Skeleton animation name not found: talk_b", so each skin keeps its own animation.)
+  # A walk animation on someone who never moves plays on the clock = walking in place.
+  stand_skin: https://fuel.gazebosim.org/1.0/OpenRobotics/models/actor - relative paths/tip/files/meshes/talk_b.dae
+  stand_hip_height: 1.0   # adjust separately if standers float or sink
+
+defaults:
+  adult_speed: [1.0, 1.4]   # m/s, random per person (normal walking pace)
+  missing_speed: [0.7, 0.9] # the missing person drifts slowly, like someone lost
+  turn_time: 0.6            # s spent turning on the spot before each new leg
+  stops: [3, 5]             # each visitor visits 3-5 places, then loops
+  # How long a visitor lingers in each zone type [min, max] seconds
+  dwell:
+    booth_front: [8, 30]
+    area: [0, 6]
+  # Where visitors like to go (relative weights per zone id).
+  # "floor" = any free spot on the Expo floor: people wandering through the
+  # open areas, so the middle of the venue isn't empty.
+  destinations:
+    booth_a_front: 3
+    booth_b_front: 3
+    booth_c_front: 3
+    booth_d_front: 3
+    plaza: 4
+    walkway: 4
+    entrance: 2
+    floor: 6
+
+scenarios:
+  # Everyday traffic: people browsing booths, a small audience at the stage
+  normal:
+    seed: 1                 # same seed -> exactly the same crowd every run
+    visitors: 200
+    audience: 48            # standing in the plaza, facing the stage
+
+  # One booth gets over capacity (25) -> should trigger a density alert
+  crowded_booth:
+    seed: 2
+    visitors: 170
+    audience: 48
+    hotspots:
+      - zone: booth_b_front
+        people: 30
+
+  # A person wanders away from booth B and ends up alone near the SE corner
+  missing_person:
+    seed: 3
+    visitors: 199
+    audience: 48
+    missing_person:
+      path: [[-24, 6], [-15, 0], [-10, -15], [15, -20], [35, -22]]
+      start_delay: 20       # seconds with the group before wandering off
