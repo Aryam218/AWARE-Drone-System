@@ -106,6 +106,7 @@ This installs everything, step by step, and prints a coloured header for each:
 | 6 | Downloads the 3D people models | 1–3 min |
 | 7 | Builds our drone, the outfits and the world | 1 min |
 | 8 | Adds short commands to your terminal | seconds |
+| 9 | Python environment for the AI (`rasid_video_pipeline`) | 5–15 min |
 
 **You should see** at the end:
 
@@ -139,6 +140,28 @@ bash setup/check.sh
 Ready! Continue with 'Running the simulation' in README.md.
 ```
 
+### 3.5 The AI part (once)
+
+The installer's **step 9** also prepared the AI environment for
+`../rasid_video_pipeline` (the search pipeline). One thing it cannot do for you:
+the **OpenAI key**. Create a file named `.env` in `rasid_video_pipeline/`:
+
+```bash
+cd ~/AWARE-Drone-System/rasid_video_pipeline
+nano .env
+```
+
+Type this line (with your real key), then save with `Ctrl`+`O`, `Enter`, and exit with `Ctrl`+`X`:
+
+```
+OPENAI_API_KEY=sk-...
+```
+
+> **Never upload `.env` to GitHub.** This repository is public: anyone could use
+> your key, billed to you. (`.env` is already in `.gitignore`.)
+
+Run `bash setup/check.sh` again: the **AI** section should now be all PASS.
+
 ---
 
 ## 4. Run the simulation
@@ -154,66 +177,87 @@ in its own terminal tab:
 | 4 | **Bridge** | Sends the drone camera to ROS 2, so the AI can read it |
 | 5 | **Patrol** | Makes the drone fly over the whole venue by itself |
 
-### 4.1 Start everything (automatic)
+### 4.1 Everything with one command: `aware_run`
 
 ```bash
-aware_start
+aware_run
 ```
 
-This **stops any old simulation first**, then opens tabs **1 WORLD**, **2 PX4**,
-**3 GUI** and **4 BRIDGE** in the right order, waiting between them.
+It **stops any old run first**, then opens one terminal tab per part, in order,
+**waiting until each part is really ready** before starting the next:
 
-**You should see:**
-- the message `Waiting for the world to load....... ready.`
-- after about a minute, a Gazebo window showing the venue, the crowd, and the
-  drone on the dark landing pad (white "H") south of the entrance gate
-- in the **2 PX4** tab, a prompt: `pxh>`
+| Tab | Part | Waits until |
+|---|---|---|
+| 1 WORLD | the 3D world (no window) | the world has loaded |
+| 2 PX4 | the autopilot, `pxh>` prompt | the drone appears on the pad |
+| 4 BRIDGE | camera → ROS 2 | camera images arrive |
+| 5 AI | the search, in its own **video window** | ~20 s (loading the models) |
+| 6 PATROL | the autonomous flight | **you** (see below) |
 
-> Using the AI at the same time? Start **without the 3D window** to save the GPU:
-> `aware_start --no-gui`
-
-<details>
-<summary>Prefer to start each part yourself? (manual way)</summary>
-
-Open 4 terminal tabs (`Ctrl`+`Shift`+`T`) and run one command in each, **in this
-order**, waiting for each to settle:
-
-```bash
-~/AWARE-Drone-System/simulation/launch/1_world.sh     # tab 1: wait until the text stops scrolling
-~/AWARE-Drone-System/simulation/launch/2_px4.sh       # tab 2: wait for the "pxh>" prompt
-~/AWARE-Drone-System/simulation/launch/3_gui.sh       # tab 3: optional 3D window
-~/AWARE-Drone-System/simulation/launch/4_bridge.sh    # tab 4: keeps running quietly
-```
-</details>
-
-### 4.2 Fly the patrol
-
-In a **new** terminal tab:
-
-```bash
-aware_patrol
-```
-
-It connects to the drone, checks GPS, uploads the route, then **waits for you**:
+**You should see**, after about a minute: the AI window **"AWARE live search"**
+showing the live drone camera with **SEARCHING** at the top, and the PATROL tab
+ending with:
 
 ```
 [4/6] TAKEOFF: waiting for YOU. In the PX4 terminal (T2) type:
           commander takeoff
 ```
 
-**Only now**, go to the **2 PX4** tab and type:
+**Only now**, click the **2 PX4** tab and type:
 
 ```
 commander takeoff
 ```
 
-**You should see:** the drone climbs to 10 m, flies back and forth over the
-venue (`waypoint 1/8`, `2/8`, ...), returns to the pad and lands:
-`landed. Patrol finished.`
+#### What happens during the flight
 
-- **Ctrl+C** in the patrol tab at any time = the drone **returns to the pad and
-  lands** (it never just stops in the air).
-- More rounds: `aware_patrol --loops 2`
+| The AI window shows | What it means | What you do |
+|---|---|---|
+| **SEARCHING** (grey) | Looking for the person in the description | nothing |
+| **POSSIBLE MATCH** (orange box) | GPT thinks it found them. **The drone stops and holds position** | press **`c`** (confirm) or **`r`** (reject) in the window |
+| **TRACKING CONFIRMED TARGET** (green box) | Following the person in the image; the drone keeps holding over them | nothing |
+| **REJECTED / TARGET LOST** (red) | Back to searching; **the patrol resumes** | nothing |
+
+`q` in the AI window quits the search. `Ctrl`+`C` in the PATROL tab = the drone
+**returns to the pad and lands**.
+
+#### Options
+
+| Command | Effect |
+|---|---|
+| `aware_run --gui` | also open the Gazebo 3D window (heavier: skip it on weak GPUs) |
+| `aware_run --dashboard` | run the AI through the **dashboard backend** instead of the AI window; start the search from the dashboard with `video_path` = `ros` |
+| `aware_run --scenario normal` | rebuild the world first (`normal`, `crowded_booth`, `missing_person`) |
+| `aware_run --scenario missing_person --scale 0.5` | ... with half the people (for slower computers) |
+| `aware_run --loops 3` | patrol rounds (default 2) |
+| `aware_run --auto-takeoff` | take off by itself (no `commander takeoff`) |
+| `aware_run --no-ai` | simulation + patrol only |
+| `aware_run --help` | list all options |
+
+Options can be combined, e.g. `aware_run --dashboard --gui --loops 3`.
+
+### 4.2 Simulation only (no AI)
+
+```bash
+aware_start           # world, PX4, 3D window, bridge (aware_start --no-gui without the window)
+aware_patrol          # then fly; type "commander takeoff" in the PX4 tab when asked
+```
+
+<details>
+<summary>Prefer to start each part yourself? (manual way)</summary>
+
+Open terminal tabs (`Ctrl`+`Shift`+`T`) and run one command in each, **in this
+order**, waiting for each to settle:
+
+```bash
+~/AWARE-Drone-System/simulation/launch/1_world.sh     # wait until the text stops scrolling
+~/AWARE-Drone-System/simulation/launch/2_px4.sh       # wait for the "pxh>" prompt
+~/AWARE-Drone-System/simulation/launch/3_gui.sh       # optional 3D window
+~/AWARE-Drone-System/simulation/launch/4_bridge.sh    # keeps running quietly
+aware_ai && python3 run_live.py                        # the AI window
+~/AWARE-Drone-System/simulation/launch/5_patrol.sh    # the flight
+```
+</details>
 
 ### 4.3 See what the drone camera sees
 
@@ -231,6 +275,8 @@ list at the top.
 ```bash
 aware_stop
 ```
+
+(Stops Gazebo, PX4, the bridge, the AI and the patrol.)
 
 **Always run this before starting again.** Leftover programs from a previous run
 are the #1 cause of blank or frozen windows.
@@ -317,6 +363,7 @@ python3 scripts/patrol_plan.py --preview                        # → docs/patro
 | `/clock` | `rosgraph_msgs/Clock` | Simulation time |
 | `/aware/ground_truth` | `std_msgs/String` (JSON) | **Answer key**: true position (x/y and lat/lon), zone, outfit of every person. Start with `launch/ground_truth.sh`. For **scoring** only, never as AI input |
 | `/aware/ground_truth/missing_person` | `geometry_msgs/PointStamped` | True position of the missing person |
+| `/aware/search_state` | `std_msgs/String` (JSON) | What the AI is doing: `searching`, `candidate`, `confirmed`, `rejected`, `lost`. The patrol **holds position** on `candidate`/`confirmed` and **resumes** on `rejected`/`lost` |
 
 Check that images arrive (in a terminal where `aware_start` is running):
 
@@ -326,9 +373,36 @@ ros2 topic hz /aware/camera/image      # should show about 15
 
 ### Connecting the AI search pipeline
 
-See **[`ai_bridge/README.md`](ai_bridge/README.md)**: it turns the live camera
-into something that works like a video file, so the existing pipeline needs a
-one-line change.
+The live-camera files (`run_live.py`, `ros_frame_source.py`, `aware_status.py`,
+`cloud_track/foundation_model_wrappers/aware_candidates.py`) are part of
+`rasid_video_pipeline/`. **[`ai_bridge/README.md`](ai_bridge/README.md)** explains
+what each one does and the changes made in the pipeline, in case you need to
+re-apply them to another version of the AI code.
+
+**Dashboard backend:** `aware_run --dashboard` starts it with
+`uvicorn backend:app --host 0.0.0.0 --port 8000`. A different command can be set
+with the environment variable `AWARE_BACKEND_CMD`. Live searches use
+`"video_path": "ros"`:
+
+```bash
+curl -X POST http://localhost:8000/start -H "Content-Type: application/json" \
+  -d '{"video_path": "ros", "description": "a person wearing a red top and white trousers"}'
+```
+
+---
+
+### All shortcuts
+
+| Command | What it does |
+|---|---|
+| `aware_run` | **everything**, one command (section 4.1) |
+| `aware_start` | simulation only: world, PX4, 3D window, bridge |
+| `aware_stop` (or `aware_kill`) | stop everything |
+| `aware_patrol` | fly the patrol |
+| `aware_camera` | show the drone camera |
+| `aware_check` | check the installation |
+| `aware` | go to the simulation folder with its Python active |
+| `aware_ai` | go to the AI folder with its Python active (prompt shows `(ai_venv)`) |
 
 ---
 
@@ -347,6 +421,10 @@ from a previous run.
 | `commander takeoff` refused: "No connection to the GCS" | Start `aware_patrol` **first**; it counts as the ground station |
 | `ros2 topic hz` shows nothing | Tab **4 BRIDGE** isn't running → start `launch/4_bridge.sh` |
 | `No module named ...` in Python | The Python environment isn't active → run `aware` first |
+| `aware_run` stops with "AI environment missing" | Run `bash setup/install.sh` again (step 9), or use `aware_run --no-ai` |
+| AI window says nothing for a long time, never finds the person | The person is only in view on some strips: use `--loops 3`; check the AI tab for `AWARE candidates:` lines |
+| The drone doesn't stop at a POSSIBLE MATCH | The PATROL tab must print `listening to the AI on /aware/search_state`; if not, the AI and patrol versions don't match (pull the latest code) |
+| `401` / `Incorrect API key` in the AI tab | The `.env` key is wrong or missing (section 3.5) |
 | People walking in place, or not appearing | The first start downloads/loads the people models: wait a minute; check `bash setup/check.sh` |
 
 More details: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
@@ -380,9 +458,9 @@ AWARE-Drone-System/
     ├── setup/
     │   ├── install.sh           one-time installer
     │   ├── check.sh             "is everything OK?" test
-    │   ├── aware_env.sh         terminal shortcuts (aware_start, aware_stop, ...)
+    │   ├── aware_env.sh         terminal shortcuts (aware_run, aware_stop, ...)
     │   └── versions.env         which PX4 version to install
-    ├── launch/                  start scripts (1_world, 2_px4, 3_gui, 4_bridge, 5_patrol, stop, start_all)
+    ├── launch/                  aware_run.sh (everything) + the single steps (1_world ... 5_patrol, stop)
     ├── aware_sim/
     │   ├── config/              ALL settings (venue, crowd, outfits, patrol, drone)
     │   ├── scripts/             generators and tools (world, outfits, drone, patrol, ground truth, recorder)
@@ -393,7 +471,7 @@ AWARE-Drone-System/
 ```
 
 Created by the installer inside `simulation/` and **not** stored in git: `PX4-Autopilot/`,
-`aware_venv/`, the generated world, outfits and drone models.
+`aware_venv/`, `ai_venv/`, the generated world, outfits and drone models.
 
 ### Credits
 

@@ -32,6 +32,7 @@ Crowd analytics is intentionally kept separate from this search backend.
 """
 
 from __future__ import annotations
+from aware_status import publish_status
 
 import base64
 import json
@@ -291,6 +292,7 @@ def _worker(
 
     def on_candidate(
         event: CandidateEvent,
+        publish_status("candidate", track_id=event.track_id)
     ) -> None:
 
         # If a candidate is already waiting for a decision,
@@ -354,6 +356,7 @@ def _worker(
 
     def on_confirmed(
         event: ConfirmedEvent,
+        publish_status("confirmed", track_id=event.track_id)
     ) -> None:
 
         # Candidate no longer needs a yes/no decision.
@@ -392,6 +395,7 @@ def _worker(
 
     def on_rejected(
         event: RejectedEvent,
+        publish_status("rejected", track_id=event.track_id)
     ) -> None:
 
         _awaiting_decision.clear()
@@ -413,6 +417,7 @@ def _worker(
 
     def on_lost(
         event: LostEvent,
+        publish_status("lost", track_id=event.track_id)
     ) -> None:
 
         # A lost candidate must not leave the UI stuck in
@@ -560,10 +565,13 @@ async def start(
     # Output path
     # --------------------------------------------------------
 
-    output_path = str(
-        OUTPUT_DIR
-        / f"annotated_{Path(video_path).stem}.mp4"
-    )
+    if video_path == "ros":
+        # live camera: one file per run, e.g. annotated_live_20261006_191500.mp4
+        from datetime import datetime
+        stem = "live_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+    else:
+        stem = Path(video_path).stem
+    output_path = str(OUTPUT_DIR / f"annotated_{stem}.mp4")
 
     # --------------------------------------------------------
     # Start worker

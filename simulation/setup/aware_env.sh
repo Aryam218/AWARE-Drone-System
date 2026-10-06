@@ -2,12 +2,16 @@
 # Loaded by ~/.bashrc in every new terminal (added by setup/install.sh).
 # Gives you short commands; see README.md "Shortcuts".
 export AWARE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export AWARE_AI_DIR="${AWARE_AI_DIR:-$(cd "$AWARE_ROOT/.." && pwd)/rasid_video_pipeline}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
 [ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash
 
-alias aware='cd "$AWARE_ROOT" && source "$AWARE_ROOT/aware_venv/bin/activate"'
-alias aware_start='"$AWARE_ROOT/launch/start_all.sh"'
+alias aware_run='"$AWARE_ROOT/launch/aware_run.sh"'        # everything, one command
+alias aware_start='"$AWARE_ROOT/launch/start_all.sh"'      # simulation only (world, PX4, GUI, bridge)
 alias aware_stop='"$AWARE_ROOT/launch/stop.sh"'
+alias aware_kill='"$AWARE_ROOT/launch/stop.sh"'
 alias aware_patrol='"$AWARE_ROOT/launch/5_patrol.sh"'
 alias aware_camera='"$AWARE_ROOT/launch/camera_view.sh"'
 alias aware_check='bash "$AWARE_ROOT/setup/check.sh"'
+alias aware='cd "$AWARE_ROOT" && source "$AWARE_ROOT/aware_venv/bin/activate"'          # simulation Python
+alias aware_ai='source "$AWARE_ROOT/ai_venv/bin/activate" && cd "$AWARE_AI_DIR"'         # AI Python
