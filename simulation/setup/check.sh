@@ -56,6 +56,25 @@ n=$(ls "$ROOT/aware_sim/models/aware_people/meshes" 2>/dev/null | wc -l)
 [ -f "$ROOT/aware_sim/worlds/aware_expo.sdf" ] && ok "world generated" || bad "world not generated" "cd aware_sim && python3 scripts/generate_world.py --scenario missing_person"
 grep -qF "setup/aware_env.sh" ~/.bashrc && ok "terminal shortcuts installed" || note "shortcuts not in ~/.bashrc" "bash setup/install.sh (step 8)"
 
+section "AI (optional)"
+AI_DIR="$(cd "$ROOT/.." && pwd)/rasid_video_pipeline"
+if [ -d "$AI_DIR" ]; then
+  if [ -x "$ROOT/ai_venv/bin/python" ]; then
+    "$ROOT/ai_venv/bin/python" -c "import rclpy, cloud_track, supervision" 2>/dev/null \
+      && ok "ai_venv: ROS + cloud_track + supervision" || bad "AI packages missing" "bash setup/install.sh (step 9)"
+    v=$("$ROOT/ai_venv/bin/python" -c "import numpy;print(numpy.__version__)" 2>/dev/null)
+    [[ "$v" == 1.* ]] && ok "ai_venv NumPy $v" || bad "ai_venv NumPy is '$v' (must be 1.x)" "source ai_venv/bin/activate && pip install 'numpy<2'"
+  else
+    note "ai_venv missing" "bash setup/install.sh (step 9), or run the simulation with: aware_run --no-ai"
+  fi
+  for f in run_live.py ros_frame_source.py aware_status.py; do
+    [ -f "$AI_DIR/$f" ] || note "$f not in rasid_video_pipeline" "copy it from ai_bridge/ (see ai_bridge/README.md)"
+  done
+  [ -f "$AI_DIR/.env" ] && ok "OpenAI key file (.env) present" || note "no .env in rasid_video_pipeline" "create it with OPENAI_API_KEY=sk-..."
+else
+  note "AI folder not found" "the simulation still works: aware_run --no-ai"
+fi
+
 echo -e "\n\e[1m== Result ==\e[0m  PASS: $pass   WARN: $warn   FAIL: $fail"
 [ $fail -eq 0 ] && echo "Ready! Continue with 'Running the simulation' in README.md." || echo "Fix the FAIL lines (top to bottom), then run this check again."
 exit $fail

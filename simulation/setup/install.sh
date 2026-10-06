@@ -120,8 +120,32 @@ else
   ok "added (new terminals will have them)"
 fi
 
+# ---------------------------------------------------------------- 9
+step 9 "AI environment (ai_venv) for ../rasid_video_pipeline"
+AI_DIR="$(cd "$ROOT/.." && pwd)/rasid_video_pipeline"
+if [ ! -d "$AI_DIR" ]; then
+  warn "AI folder not found ($AI_DIR): skipping. The simulation works without it."
+else
+  if [ ! -d "$ROOT/ai_venv" ]; then
+    # shellcheck disable=SC1091
+    source /opt/ros/jazzy/setup.bash
+    python3 -m venv --system-site-packages "$ROOT/ai_venv"     # sees ROS (rclpy)
+  fi
+  # shellcheck disable=SC1091
+  source "$ROOT/ai_venv/bin/activate"
+  [ -f "$AI_DIR/requirements.txt" ] && pip install -r "$AI_DIR/requirements.txt" "numpy<2"
+  [ -f "$AI_DIR/pyproject.toml" ] && pip install -e "$AI_DIR" "numpy<2"
+  pip install supervision python-dotenv openai "numpy<2"
+  python3 -c "import rclpy, cloud_track, supervision; print('AI imports OK')" || warn "an AI import failed (see above)"
+  deactivate
+  if [ ! -f "$AI_DIR/.env" ]; then
+    warn "No OpenAI key yet. Create $AI_DIR/.env containing:  OPENAI_API_KEY=sk-...  (never commit it)"
+  fi
+  ok "ai_venv ready"
+fi
+
 trap - ERR
 echo -e "\n\033[1;32m==== INSTALLATION COMPLETE ====\033[0m"
 echo "1. RESTART the computer once (PX4's setup changed your user groups)."
 echo "2. Then check everything:   bash setup/check.sh"
-echo "3. Then follow 'Running the simulation' in README.md"
+echo "3. Then start everything:     aware_run      (see README.md)"

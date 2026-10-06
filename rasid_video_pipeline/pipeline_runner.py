@@ -16,8 +16,8 @@ AWARE search flow:
 
 Crowd analytics remains separate from this module.
 """
-
 from __future__ import annotations
+
 
 import os
 import time
@@ -37,6 +37,7 @@ from cloud_track.utils.video_streamer import VideoStreamer
 
 
 load_dotenv()
+from ros_frame_source import RosVideoStreamer
 
 
 # ============================================================
@@ -210,6 +211,7 @@ class SearchController:
         self._last_candidate_bbox = None
         self._last_candidate_track_id = None
 
+   
     # ========================================================
     # USER ACTIONS
     # ========================================================
@@ -495,6 +497,16 @@ def draw_bbox(
 # VIDEO RUNNER
 # ============================================================
 
+# ============================================================
+# STREAM SOURCE
+# ============================================================
+
+
+def open_stream(video_path: str):
+    """'ros' = live Gazebo camera; anything else = a video file, as before."""
+    if video_path == "ros":
+        return RosVideoStreamer("/aware/camera/image")
+    return VideoStreamer(video_path)
 
 def run_on_video(
     video_path: str,
@@ -512,6 +524,9 @@ def run_on_video(
     on_rejected: Optional[
         Callable[[RejectedEvent], None]
     ] = None,
+    on_frame: Optional[
+        Callable[[np.ndarray, object], None]
+    ] = None,
 ) -> None:
     """
     Run AWARE on a test video.
@@ -525,7 +540,7 @@ def run_on_video(
         description=description,
     )
 
-    stream = VideoStreamer(
+    stream = open_stream(
         video_path
     )
 
@@ -558,9 +573,8 @@ def run_on_video(
             (w, h),
         )
 
-        stream = VideoStreamer(
-            video_path
-        )
+    if video_path != "ros":
+        stream = VideoStreamer(video_path)
 
     # --------------------------------------------------------
     # MAIN LOOP
@@ -569,6 +583,8 @@ def run_on_video(
     for frame_index, frame in enumerate(
         stream
     ):
+    
+ 
 
         # ----------------------------------------------------
         # DASHBOARD ACTIONS
@@ -791,6 +807,14 @@ def run_on_video(
                 event
             )
 
+
+        # ----------------------------------------------------
+        # LIVE VIEW
+        # ----------------------------------------------------
+
+        if on_frame is not None:
+            on_frame(annotated, event)
+            
         # ----------------------------------------------------
         # OPTIONAL VIDEO OUTPUT
         # ----------------------------------------------------
@@ -804,3 +828,6 @@ def run_on_video(
     if writer is not None:
 
         writer.release()
+
+    if hasattr(stream, "release"):
+        stream.release()

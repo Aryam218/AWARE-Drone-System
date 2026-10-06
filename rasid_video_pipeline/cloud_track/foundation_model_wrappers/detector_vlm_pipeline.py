@@ -7,6 +7,7 @@ import torch
 from loguru import logger
 from PIL import Image
 
+from cloud_track.foundation_model_wrappers.aware_candidates import select_candidates
 from cloud_track.foundation_model_wrappers.wrapper_base import WrapperBase
 from cloud_track.tracker_wrapper.bytetrack_wrapper import ByteTrackWrapper
 
@@ -380,6 +381,15 @@ class DetectorVlmPipeline(WrapperBase):
                 boxes_filt,
                 scores,
             )
+        )
+        
+        # AWARE: choose WHICH people the VLM checks (see aware_candidates.py)
+        tracked_people = select_candidates(
+            image,
+            boxes_filt,
+            scores,
+            tracked_people,
+            verbal_description,
         )
 
         # Nothing currently tracked/detected.

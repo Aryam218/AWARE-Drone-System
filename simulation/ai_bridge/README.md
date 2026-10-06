@@ -7,7 +7,8 @@ These three files connect it to the simulated drone camera:
 |---|---|---|
 | `ros_frame_source.py` | `RosVideoStreamer`: the live camera, used **exactly like a video file** (`for frame in stream:`) | next to `pipeline_runner.py` |
 | `run_live.py` | Runs the search on the live camera from a terminal, with a video window. You play the operator: **c** = confirm, **r** = reject, **q** = quit | next to `pipeline_runner.py` |
-| `aware_candidates.py` | Chooses **which** detected people GPT checks: drops the drone's own legs and whole-frame boxes, ranks people by the colours in the description, sends the best 3 | `cloud_track/foundation_model_wrappers/` |
+| `aware_candidates.py` | Chooses **which** detected people GPT checks: drops the drone's own legs and whole-frame boxes, ranks people by the colours in the description, skips duplicate boxes, sends the best 3 | `cloud_track/foundation_model_wrappers/` |
+| `aware_status.py` | Publishes the search state on `/aware/search_state` so the **drone holds position** on a candidate / confirmed target and resumes on reject / lost | next to `pipeline_runner.py` |
 
 ## 1. The AI's Python environment (once)
 
@@ -15,8 +16,9 @@ The AI environment must be able to see ROS 2 and must use **NumPy 1.x**:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -m venv --system-site-packages ~/ai_venv          # --system-site-packages lets it see ROS
-source ~/ai_venv/bin/activate
+# done automatically by setup/install.sh (step 9); by hand:
+python3 -m venv --system-site-packages ~/AWARE-Drone-System/simulation/ai_venv   # sees ROS
+source ~/AWARE-Drone-System/simulation/ai_venv/bin/activate
 cd ~/AWARE-Drone-System/rasid_video_pipeline
 pip install -r requirements.txt "numpy<2"
 pip install -e . "numpy<2"
@@ -98,12 +100,32 @@ Right after `tracked_people = self.person_tracker.update(boxes_filt, scores)`:
         )
 ```
 
-## 4. Run
+## 4. Tell the drone what the search is doing (`backend.py`)
+
+`run_live.py` already does this. For the dashboard backend, import the helper:
+```python
+from aware_status import publish_status
+```
+and add one line at the start of each callback in `_worker`:
+```python
+    def on_candidate(event):
+        publish_status("candidate", track_id=event.track_id)
+    def on_confirmed(event):
+        publish_status("confirmed", track_id=event.track_id)
+    def on_rejected(event):
+        publish_status("rejected", track_id=event.track_id)
+    def on_lost(event):
+        publish_status("lost", track_id=event.track_id)
+```
+Call `publish_status("searching")` once when the backend starts a search: a
+brand-new ROS publisher's first message can be lost before the patrol has
+"discovered" it.
+
+## 5. Run
 
 With the simulation running (`aware_start --no-gui` is lighter):
 ```bash
-source ~/ai_venv/bin/activate
-cd <the folder with pipeline_runner.py>
+aware_ai
 python3 ros_frame_source.py           # test: a window with the live camera (q to quit)
 python3 run_live.py                   # the live search
 python3 run_live.py --description "a person wearing a red top and white trousers"
