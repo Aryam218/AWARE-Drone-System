@@ -11,6 +11,7 @@ from bisect import bisect_left
 from collections import deque
 import json
 import math
+import re
 from pathlib import Path
 import signal
 import sys
@@ -116,12 +117,19 @@ def instrument_gpt_http(audit):
         try:
             data = response.json()
             usage = data.get('usage')
+            choices = data.get('choices') or []
+            answer = choices[0].get('message', {}).get('content', '') if choices else ''
+            decision_match = re.search(r'Decision:\s*(MATCH|NO MATCH|NO_MATCH|UNCERTAIN)', answer, re.IGNORECASE)
+            decision = decision_match.group(1).upper() if decision_match else None
+            justification_match = re.search(r'Justification:\s*(.*)', answer, re.DOTALL)
+            justification = justification_match.group(1).strip() if justification_match else None
             error = data.get('error') or {}
             error_code = error.get('code') if isinstance(error, dict) else None
         except (ValueError, AttributeError):
-            usage, error_code = None, None
+            usage, error_code, decision, justification = None, None, None, None
         audit.write('GPTHTTPResult', audit.sim_time, call_id=call_id,
-                    http_status=response.status_code, usage=usage, error_code=error_code)
+                    http_status=response.status_code, usage=usage, error_code=error_code,
+                    decision=decision, justification=justification)
         return response
 
     # Isolate this instrumentation to the GPT wrapper; other requests users are untouched.

@@ -145,7 +145,8 @@ class DetectorVlmPipeline(WrapperBase):
         overscan_value=50,
     ):
         self.vlm = vlm
-        self.detector = detector
+        from analytics.shared_detector import shared_detector
+        self.detector = shared_detector(detector)
 
         self.enable_overscan = enable_overscan
         self.overscan_value = overscan_value
@@ -1552,6 +1553,7 @@ def get_vlm(
             model=vl_model,
             system_prompt=system_prompt,
             cache_file_name="sard_single_shot_cache.json",
+            image_detail="low",
         )
 
     elif "paligemma" in vl_model:
@@ -1587,6 +1589,7 @@ def get_vlm_pipeline(
     simulate_time_delay: bool,
     detector_name: str,
     openai_api_key: str = None,
+    detector=None,
 ):
     """
     Create the detector + ByteTrack + VLM pipeline used by AWARE.
@@ -1598,7 +1601,8 @@ def get_vlm_pipeline(
         simulate_time_delay,
     )
 
-    detector = get_detector(detector_name)
+    if detector is None:
+        detector = get_detector(detector_name)
 
     if detector is None:
 

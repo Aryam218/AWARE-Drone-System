@@ -73,7 +73,7 @@ class RosFrameSource:
             else:
                 from rclpy.signals import SignalHandlerOptions
                 rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
-        self._node = Node("ros_frame_source")
+        self._node = Node(f"ros_frame_source_{id(self):x}")
         self._node.create_subscription(Image, topic, self._on_image, qos_profile_sensor_data)
         self._exec = SingleThreadedExecutor()
         self._exec.add_node(self._node)

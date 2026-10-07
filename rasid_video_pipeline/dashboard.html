@@ -7,6 +7,7 @@
 <title>AWARE | Intelligent Drone Operations</title>
 
 <style>
+[hidden] { display: none !important; }
 
 /* =========================================================
    RESET + THEME
@@ -629,7 +630,7 @@ h2 {
 .analytics-layout {
     display: grid;
 
-    grid-template-columns: 1.6fr .8fr;
+    grid-template-columns: 1fr;
 
     gap: 15px;
 }
@@ -1479,6 +1480,8 @@ footer {
 
 
         <div class="snapshot-visual">
+            <p id="crowdError" role="alert" style="color:#ef4444"></p>
+            <img id="crowdSnapshotImage" alt="Drone camera with detected people marked" hidden style="display:block;width:100%;max-width:640px;border-radius:12px;margin:0 auto 18px">
 
 
             <div class="snapshot-visual-title">
@@ -1531,7 +1534,7 @@ footer {
                     </div>
 
                     <div class="summary-label">
-                        People Detected
+                        People in View
                     </div>
 
                 </div>
@@ -1547,7 +1550,7 @@ footer {
 
 
 
-            <div class="summary-item">
+            <div class="summary-item" hidden>
 
                 <div class="summary-header">
 
@@ -1606,7 +1609,7 @@ footer {
                     </div>
 
                     <div class="summary-label">
-                        Overall Crowd Level
+                        Observed Zone Occupancy
                     </div>
 
                 </div>
@@ -1648,8 +1651,7 @@ footer {
             </h2>
 
             <p class="subtitle">
-                Detailed occupancy, visitor traffic and dwell-time
-                information from the latest analyzed observation.
+                Visible people and coverage-aware occupancy from the latest camera observation.
             </p>
 
         </div>
@@ -1667,7 +1669,7 @@ footer {
             </div>
 
             <div class="panel-description">
-                Occupancy and visitor activity by area.
+                People in the visible part of each venue zone. Occupancy needs at least 80% coverage.
             </div>
 
 
@@ -1686,7 +1688,7 @@ footer {
 
 
 
-        <div class="panel ranking-panel">
+        <div class="panel ranking-panel" hidden>
 
             <div class="panel-heading">
                 Most Visited Areas
@@ -1872,9 +1874,9 @@ footer {
 
                 <div class="confidence">
 
-                    Match confidence:
+                    GPT explanation:
 
-                    <strong id="candidateConfidence">
+                    <strong id="candidateJustification">
                         —
                     </strong>
 
@@ -1892,7 +1894,7 @@ footer {
 
                     <button
                         class="btn-confirm"
-                        onclick="confirmCandidate()"
+                        id="confirmCandidateButton" onclick="confirmCandidate()"
                     >
                         Confirm Person
                     </button>
@@ -1900,7 +1902,7 @@ footer {
 
                     <button
                         class="btn-reject"
-                        onclick="rejectCandidate()"
+                        id="rejectCandidateButton" onclick="rejectCandidate()"
                     >
                         Reject & Continue Search
                     </button>
@@ -1914,6 +1916,8 @@ footer {
 
 
 
+        <p id="searchError" role="alert" style="color:#ef4444"></p>
+        <p id="gptWarning" role="alert" style="color:#ef4444"></p>
         <!-- CONFIRMED -->
 
         <div
@@ -1921,6 +1925,7 @@ footer {
             id="confirmedCard"
         >
 
+            <div id="confirmedImageContainer"></div>
             <div class="confirmed-title">
                 ✓ Person Confirmed
             </div>
@@ -2090,49 +2095,79 @@ function connectWebSocket() {
    BACKEND ROUTER
 ========================================================= */
 
+let currentCandidateId = null;
+let confirmedAcknowledged = false;
+let pendingDecision = false;
+function decisionButtons(disabled) {
+    document.getElementById("confirmCandidateButton").disabled = disabled;
+    document.getElementById("rejectCandidateButton").disabled = disabled;
+}
+function clearPersonCards() {
+    document.getElementById("candidateCard").classList.remove("visible");
+    document.getElementById("confirmedCard").classList.remove("visible");
+    document.getElementById("personLocation").textContent = "Location unavailable";
+    currentCandidateId = null;
+    confirmedAcknowledged = false;
+    pendingDecision = false;
+    decisionButtons(false);
+}
+function showImage(container, image) {
+    if (!image || !image.startsWith("data:image/jpeg;base64,")) return;
+    const element = document.createElement("img");
+    element.src = image;
+    element.alt = "Drone camera: tracked person";
+    element.style.maxWidth = "100%";
+    document.getElementById(container).replaceChildren(element);
+}
 function handleBackendMessage(data) {
-
-
-    if (
-        data.type === "crowd_analytics" ||
-        data.analytics
-    ) {
-
-        updateCrowdAnalytics(
-            data.analytics || data
-        );
-
+    if (Number.isFinite(data.sim_time)) latestSimTime = Math.max(latestSimTime ?? data.sim_time, data.sim_time);
+    if (data.type === "crowd_analytics") updateCrowdAnalytics(data);
+    if (data.type === "crowd_snapshot") {
+        const image = document.getElementById("crowdSnapshotImage");
+        image.src = data.image;
+        image.hidden = false;
+        document.getElementById("crowdError").textContent = "";
     }
-
-
-    if (data.type === "candidate") {
-
-        showCandidate(data);
-
-    }
-
-
+    refreshZoneAges();
+    if (data.type === "candidate") showCandidate(data);
     if (data.type === "search_status") {
-
-        updateSearchStatus(
-            data.message || "Searching..."
-        );
-
+        updateSearchStatus(data.message);
+        if (data.state === "searching") {
+            clearPersonCards();
+            if (data.gpt_verification_off === false) document.getElementById("gptWarning").textContent = "";
+        }
+        if (data.state === "awaiting_decision") { pendingDecision = false; decisionButtons(false); }
+        if (data.state === "confirming" || data.state === "resuming_search") {
+            pendingDecision = true; decisionButtons(true);
+        }
+        if (data.state === "confirmed") {
+            confirmedAcknowledged = true;
+            pendingDecision = false;
+            document.getElementById("candidateCard").classList.remove("visible");
+            document.getElementById("confirmedCard").classList.add("visible");
+        }
+        document.getElementById("startSearchButton").disabled = data.state !== "idle" && data.state !== "finished";
+        if (data.state === "finished") clearPersonCards();
     }
-
-
-    if (data.type === "person_location") {
-
-        showConfirmedLocation(
-
-            data.location ||
-            data.coordinates ||
-            "Location received"
-
-        );
-
+    if (data.type === "person_location" && confirmedAcknowledged) showConfirmedLocation(data);
+    if (data.type === "tracking_update") {
+        if (data.candidate_id === currentCandidateId || confirmedAcknowledged) {
+            showImage(confirmedAcknowledged ? "confirmedImageContainer" : "candidateImageContainer", data.image);
+        }
     }
-
+    if (data.type === "rejected" || data.type === "lost") {
+        clearPersonCards();
+        updateSearchStatus(data.type === "lost" ? "Target lost. Searching again." : "Rejected. Searching again.");
+    }
+    if (data.type === "error" && data.code === "crowd_failed") {
+        document.getElementById("crowdError").textContent = data.message;
+        return;
+    }
+    if (data.type === "error") {
+        document.getElementById("searchError").textContent = data.message;
+        pendingDecision = false; decisionButtons(false);
+    }
+    if (data.type === "gpt_verification_off") document.getElementById("gptWarning").textContent = data.message;
 }
 
 
@@ -2140,777 +2175,76 @@ function handleBackendMessage(data) {
    CROWD ANALYTICS
 ========================================================= */
 
-function updateCrowdAnalytics(data) {
-
-
-    const zones =
-        data.zones ||
-        data.zone_analytics ||
-        data.areas ||
-        {};
-
-
-    const zoneEntries =
-        Array.isArray(zones)
-
-        ? zones.map(
-            (zone, index) => [
-
-                zone.name ||
-                zone.zone ||
-                zone.area ||
-                `Area ${index + 1}`,
-
-                zone
-
-            ]
-        )
-
-        : Object.entries(zones);
-
-
-
-    let totalPeople =
-        Number(
-            data.total_people ??
-            data.people ??
-            0
-        );
-
-
-    let totalFootfall =
-        Number(
-            data.total_footfall ??
-            data.footfall ??
-            0
-        );
-
-
-
-    if (
-        data.total_people === undefined &&
-        data.people === undefined
-    ) {
-
-        totalPeople =
-            zoneEntries.reduce(
-
-                (sum, [, zone]) =>
-
-                    sum +
-
-                    Number(
-                        zone.current_people ??
-                        zone.people ??
-                        zone.count ??
-                        0
-                    ),
-
-                0
-            );
-
-    }
-
-
-
-    if (
-        data.total_footfall === undefined &&
-        data.footfall === undefined
-    ) {
-
-        totalFootfall =
-            zoneEntries.reduce(
-
-                (sum, [, zone]) =>
-
-                    sum +
-
-                    Number(
-                        zone.unique_footfall ??
-                        zone.footfall ??
-                        0
-                    ),
-
-                0
-            );
-
-    }
-
-
-
-    let crowdedCount = 0;
-
-    let occupancyValues = [];
-
-
-    zoneEntries.forEach(([, zone]) => {
-
-        const occupancy =
-            getOccupancy(zone);
-
-
-        occupancyValues.push(occupancy);
-
-
-        if (
-            zone.crowded === true ||
-            zone.is_crowded === true ||
-            occupancy >= 80
-        ) {
-
-            crowdedCount++;
-
-        }
-
-    });
-
-
-
-    document
-        .getElementById("totalPeople")
-        .textContent = totalPeople;
-
-
-    document
-        .getElementById("totalFootfall")
-        .textContent = totalFootfall;
-
-
-    document
-        .getElementById("crowdedAreas")
-        .textContent = crowdedCount;
-
-
-
-    let averageOccupancy = 0;
-
-
-    if (occupancyValues.length) {
-
-        averageOccupancy =
-            occupancyValues.reduce(
-                (sum, value) => sum + value,
-                0
-            )
-            /
-            occupancyValues.length;
-
-    }
-
-
-    const crowdLevel =
-        getCrowdLevel(averageOccupancy);
-
-
-    const crowdLevelElement =
-        document.getElementById("crowdLevel");
-
-
-    crowdLevelElement.textContent =
-        crowdLevel.label;
-
-
-    crowdLevelElement.className =
-        `summary-value text ${crowdLevel.className}`;
-
-
-
-    const timestamp =
-
-        data.timestamp ||
-        data.last_analyzed ||
-        new Date().toISOString();
-
-
-    document
-        .getElementById("lastAnalyzed")
-        .textContent =
-        formatTimestamp(timestamp);
-
-
-    document
-        .getElementById("observationState")
-        .textContent =
-        "Latest Observation";
-
-
-    renderSnapshot(zoneEntries);
-
-    renderZones(zoneEntries);
-
-    renderRanking(zoneEntries);
-
-}
-
-
-/* =========================================================
-   OCCUPANCY HELPER
-========================================================= */
+// Counts describe this camera view. Unknown and unseen values stay unknown.
+let latestSimTime = null;
+let currentCrowdZones = [];
 
 function getOccupancy(zone) {
-
-
-    const people =
-        Number(
-            zone.current_people ??
-            zone.people ??
-            zone.count ??
-            0
-        );
-
-
-    const capacity =
-        Number(
-            zone.capacity ??
-            0
-        );
-
-
-    let occupancy =
-        Number(
-            zone.occupancy ??
-            zone.occupancy_percent ??
-            0
-        );
-
-
-    if (
-        occupancy > 0 &&
-        occupancy <= 1
-    ) {
-
-        occupancy *= 100;
-
-    }
-
-
-    if (
-        !occupancy &&
-        capacity > 0
-    ) {
-
-        occupancy =
-            (people / capacity) * 100;
-
-    }
-
-
-    return Math.max(
-        0,
-        Math.min(100, occupancy)
-    );
-
+    if (zone.coverage !== "full" || zone.coverage_fraction < 0.8 ||
+        zone.occupancy_percent === null || !Number.isFinite(zone.occupancy_percent)) return null;
+    return zone.occupancy_percent; // Percentages are already percentages, even below 1%.
 }
 
-
-/* =========================================================
-   CROWD LEVEL
-========================================================= */
-
-function getCrowdLevel(occupancy) {
-
-
-    if (occupancy >= 80) {
-
-        return {
-            label: "High",
-            className: "danger"
-        };
-
-    }
-
-
-    if (occupancy >= 50) {
-
-        return {
-            label: "Moderate",
-            className: "warning"
-        };
-
-    }
-
-
-    return {
-        label: "Low",
-        className: "success"
-    };
-
+function zoneAge(zone) {
+    return Number.isFinite(latestSimTime) && Number.isFinite(zone.last_seen_sim_time)
+        ? `seen ${Math.round(Math.max(0, latestSimTime - zone.last_seen_sim_time))} s ago`
+        : "not seen yet";
 }
 
-
-/* =========================================================
-   SNAPSHOT
-========================================================= */
-
-function renderSnapshot(zoneEntries) {
-
-
-    const container =
-        document.getElementById(
-            "snapshotZones"
-        );
-
-
-    container.innerHTML = "";
-
-
-    if (!zoneEntries.length) {
-
-        container.innerHTML = `
-
-            <div class="snapshot-empty">
-
-                <div class="snapshot-empty-icon">
-                    ◫
-                </div>
-
-                <strong>
-                    Waiting for drone analysis
-                </strong>
-
-                The latest area snapshot
-                will appear here.
-
-            </div>
-        `;
-
-        return;
-
-    }
-
-
-
-    zoneEntries.forEach(
-        ([name, zone]) => {
-
-
-            const people =
-                Number(
-                    zone.current_people ??
-                    zone.people ??
-                    zone.count ??
-                    0
-                );
-
-
-            const occupancy =
-                getOccupancy(zone);
-
-
-            const crowded =
-                zone.crowded === true ||
-                zone.is_crowded === true ||
-                occupancy >= 80;
-
-
-            let level;
-
-
-            if (crowded) {
-
-                level = "Crowded";
-
-            }
-
-            else if (occupancy >= 50) {
-
-                level = "Moderate";
-
-            }
-
-            else {
-
-                level = "Low";
-
-            }
-
-
-
-            const element =
-                document.createElement("div");
-
-
-            element.className =
-                crowded
-
-                ? "snapshot-zone crowded"
-
-                : "snapshot-zone";
-
-
-            element.innerHTML = `
-
-                <div>
-
-                    <div class="snapshot-zone-name">
-                        ${escapeHtml(name)}
-                    </div>
-
-                    <div class="snapshot-zone-people">
-                        ${people} people detected
-                    </div>
-
-                </div>
-
-
-                <div>
-
-                    <div class="snapshot-zone-percentage">
-                        ${occupancy.toFixed(0)}%
-                    </div>
-
-                    <div class="snapshot-zone-status">
-                        ${level}
-                    </div>
-
-
-                    <div class="snapshot-bar">
-
-                        <div
-                            class="snapshot-bar-fill"
-                            style="width:${occupancy}%"
-                        ></div>
-
-                    </div>
-
-                </div>
-            `;
-
-
-            container.appendChild(element);
-
-        }
-    );
-
+function refreshZoneAges() {
+    currentCrowdZones.forEach(([name,zone]) => {
+        ["zoneAge-", "snapshotAge-"].forEach(prefix => {
+            const node = document.getElementById(prefix + name);
+            if (node) node.textContent = zoneAge(zone);
+        });
+    });
 }
 
-
-/* =========================================================
-   DETAILED ZONES
-========================================================= */
-
-function renderZones(zoneEntries) {
-
-
-    const container =
-        document.getElementById(
-            "zonesContainer"
-        );
-
-
-    container.innerHTML = "";
-
-
-    if (!zoneEntries.length) {
-
-        container.innerHTML = `
-
-            <div class="empty">
-                No area analytics available.
-            </div>
-        `;
-
-        return;
-
-    }
-
-
-
-    zoneEntries.forEach(
-        ([name, zone]) => {
-
-
-            const people =
-                Number(
-                    zone.current_people ??
-                    zone.people ??
-                    zone.count ??
-                    0
-                );
-
-
-            const occupancy =
-                getOccupancy(zone);
-
-
-            const footfall =
-                Number(
-                    zone.unique_footfall ??
-                    zone.footfall ??
-                    0
-                );
-
-
-            const dwell =
-                Number(
-                    zone.average_dwell ??
-                    zone.avg_dwell ??
-                    zone.dwell_time ??
-                    0
-                );
-
-
-            const crowded =
-                zone.crowded === true ||
-                zone.is_crowded === true ||
-                occupancy >= 80;
-
-
-
-            const element =
-                document.createElement("div");
-
-
-            element.className =
-                crowded
-
-                ? "zone crowded"
-
-                : "zone";
-
-
-            element.innerHTML = `
-
-                <div class="zone-top">
-
-                    <div>
-
-                        <div class="zone-name">
-
-                            ${escapeHtml(name)}
-
-                            ${
-                                crowded
-
-                                ? `
-                                    <span class="crowded-tag">
-                                        CROWDED
-                                    </span>
-                                  `
-
-                                : ""
-                            }
-
-                        </div>
-
-
-                        <div class="zone-info">
-
-                            ${people} people
-
-                            &nbsp; • &nbsp;
-
-                            ${footfall} visitors
-
-                            &nbsp; • &nbsp;
-
-                            Avg. dwell
-                            ${formatDwell(dwell)}
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="percentage">
-
-                        ${occupancy.toFixed(0)}%
-
-                    </div>
-
-                </div>
-
-
-                <div class="bar">
-
-                    <div
-                        class="bar-fill"
-                        style="width:${occupancy}%"
-                    ></div>
-
-                </div>
-            `;
-
-
-            container.appendChild(element);
-
-        }
-    );
-
+function updateCrowdAnalytics(data) {
+    currentCrowdZones = Object.entries(data.zones || {});
+    document.getElementById("totalPeople").textContent = data.total_people_in_view ?? "—";
+    document.getElementById("totalFootfall").textContent = "—";
+    const known = currentCrowdZones.map(([,z]) => getOccupancy(z)).filter(x => x !== null);
+    document.getElementById("crowdedAreas").textContent = known.length
+        ? currentCrowdZones.filter(([,z]) => getOccupancy(z) !== null && z.crowded === true).length : "—";
+    const average = known.length ? known.reduce((a,b) => a+b,0)/known.length : null;
+    document.getElementById("crowdLevel").textContent = average === null ? "—" : `${average.toFixed(1)}% (observed zones)`;
+    document.getElementById("lastAnalyzed").textContent = Number.isFinite(data.sim_time) ? `Simulation ${data.sim_time.toFixed(1)} s` : "Time unavailable";
+    document.getElementById("observationState").textContent = "Latest Camera Observation";
+    renderCrowdZones("snapshotZones", "snapshot-zone", "snapshotAge-");
+    renderCrowdZones("zonesContainer", "zone", "zoneAge-");
+    document.getElementById("rankingContainer").textContent = "—";
+    refreshZoneAges();
 }
 
-
-/* =========================================================
-   RANKING
-========================================================= */
-
-function renderRanking(zoneEntries) {
-
-
-    const container =
-        document.getElementById(
-            "rankingContainer"
-        );
-
-
-    const ranking =
-        zoneEntries
-
-            .map(
-                ([name, zone]) => ({
-
-                    name,
-
-                    footfall:
-                        Number(
-                            zone.unique_footfall ??
-                            zone.footfall ??
-                            0
-                        ),
-
-                    dwell:
-                        Number(
-                            zone.average_dwell ??
-                            zone.avg_dwell ??
-                            zone.dwell_time ??
-                            0
-                        )
-
-                })
-            )
-
-            .sort(
-                (a, b) =>
-                    b.footfall - a.footfall
-            );
-
-
-    container.innerHTML = "";
-
-
-    if (!ranking.length) {
-
-        container.innerHTML = `
-
-            <div class="empty">
-                No ranking available.
-            </div>
-        `;
-
-        return;
-
-    }
-
-
-
-    ranking.forEach(
-        (zone, index) => {
-
-
-            const element =
-                document.createElement("div");
-
-
-            element.className = "rank";
-
-
-            element.innerHTML = `
-
-                <div class="rank-number">
-                    ${String(index + 1).padStart(2, "0")}
-                </div>
-
-
-                <div class="rank-details">
-
-                    <div class="rank-name">
-                        ${escapeHtml(zone.name)}
-                    </div>
-
-
-                    <div class="rank-sub">
-
-                        ${zone.footfall}
-                        unique visitors
-
-                        • Avg. dwell
-                        ${formatDwell(zone.dwell)}
-
-                    </div>
-
-                </div>
-            `;
-
-
-            container.appendChild(element);
-
-        }
-    );
-
+function renderCrowdZones(containerId, className, agePrefix) {
+    const container = document.getElementById(containerId);
+    container.replaceChildren();
+    currentCrowdZones.forEach(([name,zone]) => {
+        const occupancy = getOccupancy(zone);
+        const count = zone.count === null || zone.count === undefined ? "—" : zone.count;
+        const coverage = Number.isFinite(zone.coverage_fraction) ? `${(100*zone.coverage_fraction).toFixed(0)}% in view` : "coverage unknown";
+        const label = zone.coverage === "partial" ? "partly visible" : zone.coverage === "unseen" ? "not in view" : "at least 80% visible";
+        const node = document.createElement("div");
+        node.className = className + (occupancy !== null && zone.crowded === true ? " crowded" : "");
+        node.innerHTML = `<div class="zone-name">${escapeHtml(zone.display_name ?? name)}</div>
+            <div class="zone-info">${count} people in view · capacity ${zone.capacity} · ${label} (${coverage})</div>
+            <div class="zone-info" id="${agePrefix}${escapeHtml(name)}">${zoneAge(zone)}</div>
+            <div class="percentage">${occupancy === null ? "—" : occupancy.toFixed(1)+"%"}${occupancy !== null && zone.crowded === true ? " · Crowded" : ""}</div>
+            <div class="bar"><div class="bar-fill" style="width:${occupancy === null ? 0 : Math.min(100, Math.max(0, occupancy))}%"></div></div>`;
+        container.appendChild(node);
+    });
 }
 
-
-/* =========================================================
-   START PERSON SEARCH
-========================================================= */
 
 function startSearch() {
-
-
-    const description =
-
-        document
-            .getElementById(
-                "personDescription"
-            )
-            .value
-            .trim();
-
-
-    if (!description) {
-
-        alert(
-            "Please enter the person's description."
-        );
-
-        return;
-
+    const description = document.getElementById("personDescription").value.trim();
+    if (!description) { alert("Please enter the person's description."); return; }
+    document.getElementById("searchError").textContent = "";
+    if (sendMessage({type:"start_person_search", description, video_path:"ros"})) {
+        updateSearchStatus("Waiting for the backend to start the search.");
     }
-
-
-
-    document
-        .getElementById("candidateCard")
-        .classList.remove("visible");
-
-
-    document
-        .getElementById("confirmedCard")
-        .classList.remove("visible");
-
-
-    document
-        .getElementById("searchStatus")
-        .classList.add("visible");
-
-
-
-    updateSearchStatus(
-        "AWARE is analyzing the drone camera feed..."
-    );
-
-
-
-    sendMessage({
-
-        type: "start_person_search",
-
-        description: description
-
-    });
-
 }
-
 
 /* =========================================================
    SEARCH STATUS
@@ -2936,236 +2270,41 @@ function updateSearchStatus(message) {
 ========================================================= */
 
 function showCandidate(data) {
-
-
-    document
-        .getElementById("searchStatus")
-        .classList.remove("visible");
-
-
-    const card =
-        document.getElementById(
-            "candidateCard"
-        );
-
-
-    card.classList.add("visible");
-
-
-
-    let confidence =
-        Number(
-            data.confidence ??
-            data.score ??
-            0
-        );
-
-
-    if (confidence <= 1) {
-
-        confidence *= 100;
-
+    currentCandidateId = data.candidate_id;
+    confirmedAcknowledged = false;
+    decisionButtons(pendingDecision);
+    document.getElementById("confirmedCard").classList.remove("visible");
+    document.getElementById("candidateCard").classList.add("visible");
+    document.getElementById("candidateJustification").textContent = data.justification;
+    showImage("candidateImageContainer", data.image);
+}
+function requestDecision(type) {
+    if (!currentCandidateId || pendingDecision) return;
+    if (sendMessage({type, candidate_id:currentCandidateId})) {
+        pendingDecision = true;
+        decisionButtons(true);
+        updateSearchStatus("Waiting for the backend to apply your decision.");
     }
-
-
-    document
-        .getElementById(
-            "candidateConfidence"
-        )
-        .textContent =
-        `${confidence.toFixed(1)}%`;
-
-
-
-    const imageContainer =
-        document.getElementById(
-            "candidateImageContainer"
-        );
-
-
-    const image =
-
-        data.image ||
-        data.image_url ||
-        data.frame;
-
-
-
-    if (image) {
-
-        imageContainer.innerHTML = `
-
-            <img
-                src="${escapeHtml(image)}"
-                alt="Detected candidate"
-            >
-        `;
-
-    }
-
 }
-
-
-/* =========================================================
-   CONFIRM
-========================================================= */
-
-function confirmCandidate() {
-
-
-    sendMessage({
-        type: "confirm_candidate"
-    });
-
-
-    document
-        .getElementById("candidateCard")
-        .classList.remove("visible");
-
-
-    document
-        .getElementById("confirmedCard")
-        .classList.add("visible");
-
-
-    document
-        .getElementById("personLocation")
-        .textContent =
-        "Waiting for drone location...";
-
+function confirmCandidate() { requestDecision("confirm_candidate"); }
+function rejectCandidate() { requestDecision("reject_candidate"); }
+function showConfirmedLocation(data) {
+    const coords = p => p ? `${p.lat}, ${p.lon}` : "unavailable";
+    // Both times come from camera observations in simulation seconds.
+    // Browser wall time would give the wrong age when the simulation slows or pauses.
+    const knownTime = Number.isFinite(data.sim_time) && Number.isFinite(data.position_sim_time);
+    const age = knownTime ? `seen ${Math.round(Math.max(0, data.sim_time - data.position_sim_time))} s ago` : "observation age unavailable";
+    document.getElementById("personLocation").textContent =
+        `Person: ${coords(data.location)} (${age}; verified at sim ${data.position_sim_time ?? "unknown"} s). Drone: ${coords(data.drone)}`;
 }
-
-
-/* =========================================================
-   REJECT
-========================================================= */
-
-function rejectCandidate() {
-
-
-    sendMessage({
-        type: "reject_candidate"
-    });
-
-
-    document
-        .getElementById("candidateCard")
-        .classList.remove("visible");
-
-
-    document
-        .getElementById("searchStatus")
-        .classList.add("visible");
-
-
-    updateSearchStatus(
-        "Candidate rejected. Searching for another match..."
-    );
-
-}
-
-
-/* =========================================================
-   LOCATION
-========================================================= */
-
-function showConfirmedLocation(location) {
-
-
-    document
-        .getElementById("searchStatus")
-        .classList.remove("visible");
-
-
-    document
-        .getElementById("candidateCard")
-        .classList.remove("visible");
-
-
-    document
-        .getElementById("confirmedCard")
-        .classList.add("visible");
-
-
-
-    let text = location;
-
-
-    if (
-        typeof location === "object"
-    ) {
-
-
-        if (
-            location.latitude !== undefined &&
-            location.longitude !== undefined
-        ) {
-
-            text =
-                `${location.latitude}, ${location.longitude}`;
-
-        }
-
-
-        else if (
-            location.lat !== undefined &&
-            location.lon !== undefined
-        ) {
-
-            text =
-                `${location.lat}, ${location.lon}`;
-
-        }
-
-
-        else {
-
-            text =
-                JSON.stringify(location);
-
-        }
-
-    }
-
-
-
-    document
-        .getElementById("personLocation")
-        .textContent = text;
-
-}
-
-
-/* =========================================================
-   SEND
-========================================================= */
-
 function sendMessage(payload) {
-
-
-    if (
-        ws &&
-        ws.readyState === WebSocket.OPEN
-    ) {
-
-        ws.send(
-            JSON.stringify(payload)
-        );
-
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
+        return true;
     }
-
-
-    else {
-
-        console.warn(
-            "[AWARE] Backend is not connected.",
-            payload
-        );
-
-    }
-
+    document.getElementById("searchError").textContent = "Backend disconnected. Your command was not sent.";
+    return false;
 }
-
 
 /* =========================================================
    HELPERS

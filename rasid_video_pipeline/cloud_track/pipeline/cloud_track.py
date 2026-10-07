@@ -109,6 +109,7 @@ class CloudTrack:
         self.max_redetect_misses = 2
         self.lost_timeout_s = 30.0
 
+        self._force_redetect = False
         self._last_redetect_time = None
         self._redetect_misses = 0
 
@@ -168,6 +169,7 @@ class CloudTrack:
         self.current_justification = None
         self.current_track_id = None
 
+        self._force_redetect = False
         self._last_redetect_time = None
         self._redetect_misses = 0
         self._anchor_box = None
@@ -816,7 +818,14 @@ class CloudTrack:
             "redetect_target",
         )
 
+    def request_redetection(self) -> None:
+        """Check the next tracked frame without waiting for the periodic interval."""
+        self._force_redetect = True
+
     def _redetect_due(self, now) -> bool:
+
+        if self._force_redetect:
+            return True
 
         if self._last_redetect_time is None:
             return True
@@ -848,6 +857,7 @@ class CloudTrack:
         Returns (bbox, success).
         """
 
+        self._force_redetect = False
         self._last_redetect_time = now
 
         ref_box = (

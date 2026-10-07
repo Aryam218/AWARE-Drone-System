@@ -82,6 +82,35 @@ def pixel_to_ground(u, v, pose, pitch_deg=CAMERA_PITCH_DEG):
     return lat, lon
 
 
+def camera_basis(pose, pitch_deg=CAMERA_PITCH_DEG):
+    """Camera right/down/forward axes as columns in north/east/down coordinates."""
+    roll = 0.0 if CAMERA_STABILIZED else math.radians(float(pose.get("roll_deg") or 0))
+    pitch = 0.0 if CAMERA_STABILIZED else math.radians(float(pose.get("pitch_deg") or 0))
+    yaw = math.radians(pose["heading_deg"])
+    cr, sr = math.cos(roll), math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    ch, sh = math.cos(yaw), math.sin(yaw)
+    body = np.array([[ch*cp, ch*sp*sr-sh*cr, ch*sp*cr+sh*sr],
+                     [sh*cp, sh*sp*sr+ch*cr, sh*sp*cr-ch*sr],
+                     [-sp, cp*sr, cp*cr]])
+    p = math.radians(pitch_deg)
+    camera = np.array([[0, -math.sin(p), math.cos(p)],
+                       [1, 0, 0], [0, math.cos(p), math.sin(p)]])
+    return body @ camera
+
+
+def ground_to_pixel(lat, lon, pose, basis=None, height_m=0.0):
+    """Inverse projection; return (u, v, optical depth) or None behind camera."""
+    basis = camera_basis(pose) if basis is None else basis
+    north = (lat-pose["lat"])*METERS_PER_DEG_LAT
+    east = (lon-pose["lon"])*METERS_PER_DEG_LAT*math.cos(math.radians(pose["lat"]))
+    ray = basis.T @ np.array([north, east, pose["alt_rel_m"]-height_m])
+    if ray[2] <= 0:
+        return None
+    return (pose["cx"]+pose["fx"]*ray[0]/ray[2],
+            pose["cy"]+pose["fy"]*ray[1]/ray[2], float(ray[2]))
+
+
 def box_to_ground(box, pose, pitch_deg=CAMERA_PITCH_DEG):
     """Ground (lat, lon) of a person's FEET (bottom-centre of the box), or None."""
     x1, y1, x2, y2 = [float(v) for v in np.asarray(box).reshape(4)]

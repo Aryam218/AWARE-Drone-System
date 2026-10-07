@@ -8,10 +8,11 @@ export AWARE_SIM="$AWARE_ROOT/aware_sim"
 export PX4_DIR="$AWARE_ROOT/PX4-Autopilot"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"     # "radio channel" so AWARE doesn't mix with other ROS projects
 
+AWARE_ROS=jazzy; [ -f /opt/ros/jazzy/setup.bash ] || AWARE_ROS=humble
 # ROS 2 Jazzy (installed system-wide by setup/install.sh)
-if [ -f /opt/ros/jazzy/setup.bash ]; then
+if [ -f /opt/ros/$AWARE_ROS/setup.bash ]; then
   # shellcheck disable=SC1091
-  source /opt/ros/jazzy/setup.bash
+  source /opt/ros/$AWARE_ROS/setup.bash
 else
   echo "ERROR: ROS 2 Jazzy not found. Run setup/install.sh first." >&2
   exit 1

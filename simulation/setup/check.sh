@@ -10,15 +10,20 @@ section() { echo -e "\n\e[1m== $1 ==\e[0m"; }
 
 section "Computer"
 . /etc/os-release
-[ "$VERSION_ID" = "24.04" ] && ok "Ubuntu 24.04" || bad "Ubuntu $VERSION_ID" "this project needs Ubuntu 24.04"
+case "$VERSION_ID" in
+  24.04) AWARE_ROS=jazzy;  ok "Ubuntu 24.04 (ROS 2 Jazzy)" ;;
+  22.04) AWARE_ROS=humble; ok "Ubuntu 22.04 (ROS 2 Humble)" ;;
+  *)     AWARE_ROS=jazzy;  bad "Ubuntu $VERSION_ID" "this project needs Ubuntu 22.04 or 24.04" ;;
+esac
+[ "$AWARE_ROS" = "humble" ] && BRIDGE_PKG=ros-humble-ros-gzharmonic || BRIDGE_PKG=ros-jazzy-ros-gz
 case "$ROOT" in *" "*) bad "path has spaces: $ROOT" "move the repository to a path without spaces";; *) ok "repository: $ROOT";; esac
 
 section "ROS 2 + Gazebo"
-if [ -f /opt/ros/jazzy/setup.bash ]; then
-  source /opt/ros/jazzy/setup.bash; ok "ROS 2 Jazzy"
-  ros2 pkg prefix ros_gz_bridge >/dev/null 2>&1 && ok "Gazebo-ROS bridge" || bad "ros_gz missing" "sudo apt install ros-jazzy-ros-gz"
+if [ -f "/opt/ros/$AWARE_ROS/setup.bash" ]; then
+  source "/opt/ros/$AWARE_ROS/setup.bash"; ok "ROS 2 $AWARE_ROS"
+  ros2 pkg prefix ros_gz_bridge >/dev/null 2>&1 && ok "Gazebo-ROS bridge" || bad "ros_gz missing" "sudo apt install $BRIDGE_PKG"
 else
-  bad "ROS 2 Jazzy missing" "bash setup/install.sh"
+  bad "ROS 2 $AWARE_ROS missing" "bash setup/install.sh"
 fi
 if command -v gz >/dev/null && gz sim --version 2>/dev/null | grep -q "version 8\."; then
   ok "Gazebo Harmonic ($(gz sim --version | head -1))"
@@ -47,7 +52,7 @@ else
   bad "aware_venv missing" "bash setup/install.sh"
 fi
 v=$(python3 -c "import numpy;print(numpy.__version__)" 2>/dev/null)
-[[ "$v" == 1.* ]] && ok "system NumPy $v" || bad "system NumPy is '$v' (must be 1.x)" "python3 -m pip uninstall -y numpy --break-system-packages"
+[[ "$v" == 1.* ]] && ok "system NumPy $v" || bad "system NumPy is '$v' (must be 1.x)" "python3 -m pip uninstall -y numpy --break-system-packages  (on Ubuntu 22.04 without --break-system-packages)"
 
 section "AWARE files"
 ls ~/.gz/fuel/fuel.gazebosim.org/mingfei/models/actor >/dev/null 2>&1 && ok "people models downloaded" || bad "people models missing" "bash setup/install.sh (step 6)"

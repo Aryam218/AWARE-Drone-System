@@ -176,6 +176,7 @@ class SearchController:
         category: str,
         description: str,
         openai_api_key: Optional[str] = None,
+        detector=None,
     ):
         self.category = category
         self.description = description
@@ -193,6 +194,7 @@ class SearchController:
             ),
             simulate_time_delay=False,
             detector_name="sam_lq",
+            detector=detector,
             openai_api_key=(
                 openai_api_key
                 or os.environ.get("OPENAI_API_KEY")
@@ -384,6 +386,8 @@ class SearchController:
                 self._last_candidate_frame is not None
                 and self._last_candidate_bbox is not None
             ):
+                # Acknowledge immediately; the next frame performs the expensive check.
+                self.pipeline.request_redetection()
                 return ConfirmedEvent(
                     frame=self._last_candidate_frame.copy(),
                     bbox=self._last_candidate_bbox.copy(),
@@ -624,6 +628,11 @@ def run_on_video(
         Callable[[np.ndarray, object], None]
     ] = None,
     on_verification_error: Optional[Callable[[VerificationErrorEvent], None]] = None,
+    on_target_position: Optional[Callable[[dict], None]] = None,
+    on_crowd_analysis: Optional[Callable[[dict], None]] = None,
+    detector=None,
+    on_processed_frame: Optional[Callable] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
 ) -> None:
     """
     Run AWARE on a test video or the live Gazebo camera
@@ -639,7 +648,13 @@ def run_on_video(
     controller = SearchController(
         category=category,
         description=description,
+        detector=detector,
     )
+
+    crowd_counter = None
+    if on_crowd_analysis is not None:
+        from analytics.moving_crowd import MovingCrowdCounter
+        crowd_counter = MovingCrowdCounter(detector=controller.pipeline.backend.detector)
 
     stream = open_stream(
         video_path
@@ -748,6 +763,9 @@ def run_on_video(
         stream
     ):
 
+        if should_stop is not None and should_stop():
+            break
+
         # Simulation time of this frame (live camera only;
         # recorded videos have no last_stamp -> None).
         frame_time = getattr(
@@ -804,6 +822,18 @@ def run_on_video(
                     frame_index=frame_index,
                     timestamp=frame_time if frame_time is not None else time.time(),
                 ))
+
+        # Expose the existing verified anchor before the dashboard event callbacks.
+        # Ground truth never enters this observer; current drone pose is separate.
+        if on_target_position is not None and isinstance(event, (CandidateEvent, ConfirmedEvent, TrackUpdateEvent)):
+            target = controller.pipeline.verified_target()
+            ground = target.get("ground") if target is not None else None
+            pose = getattr(controller.pipeline.backend, "frame_pose", None)
+            on_target_position({
+                "location": {"lat": float(ground[0]), "lon": float(ground[1])} if ground is not None else None,
+                "position_sim_time": getattr(controller.pipeline, "_anchor_time", None) if target is not None and frame_time is not None else None,
+                "drone": {key: pose.get(key) for key in ("lat", "lon", "alt_rel_m", "heading_deg", "roll_deg", "pitch_deg")} if pose else None,
+            })
 
         annotated = frame
 
@@ -939,6 +969,19 @@ def run_on_video(
         # ----------------------------------------------------
 
         publish_target(event)
+
+        if on_processed_frame is not None:
+            # Search acknowledgements/target steering precede low-priority crowd work.
+            on_processed_frame(frame, getattr(controller.pipeline.backend, "frame_pose", None),
+                               frame_time, controller)
+
+        if crowd_counter is not None:
+            # Search's raw full-frame person inference is reused by the shared
+            # detector cache. Tracking-only frames need one crowd inference.
+            on_crowd_analysis(crowd_counter.analyze_frame(
+                frame, pose=getattr(controller.pipeline.backend, "frame_pose", None),
+                timestamp=frame_time))
+
 
         # ----------------------------------------------------
         # LIVE VIEW

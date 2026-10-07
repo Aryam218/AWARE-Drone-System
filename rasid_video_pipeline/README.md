@@ -2,7 +2,7 @@
 
 This is the "input a video, get the solution" version: detection + VLM
 verification + local tracking + a confirm/reject dashboard, all driven by a
-video file today, ready to swap for the live drone feed later.
+video file or the live drone camera, with continuous crowd counting on the dashboard.
 
 Almost none of this reimplements CloudTrack — `pipeline_runner.py` mostly
 just calls their real classes (`CloudTrack`, `get_vlm_pipeline`,
@@ -11,45 +11,43 @@ to what they're already doing internally.
 
 ## Setup
 
-1. Clone CloudTrack somewhere and install it so `import cloud_track...` works:
-   ```
-   git clone https://github.com/yblei/CloudTrack.git
-   pip install -e CloudTrack
-   ```
-   (it has a `pyproject.toml`, so editable-install works directly)
+Use the simulation installer described in [simulation/README.md](../simulation/README.md).
+It creates `simulation/ai_venv` with access to ROS 2 and installs the CloudTrack
+implementation included in this repository; do not install a separate upstream copy.
 
-2. Install this project's own requirements:
-   ```
-   pip install -r requirements.txt
-   ```
+To update an existing AI environment, run from the repository root:
 
-3. Patch the CUDA-only line if you don't have an NVIDIA GPU — same fix as
-   before, in CloudTrack's own file:
-   `CloudTrack/cloud_track/foundation_model_wrappers/grounding_dino_huggingface_wrapper.py`
-   ```python
-   self.device = "cuda"  ->  self.device = "cuda" if torch.cuda.is_available() else "cpu"
-   ```
+```bash
+source /opt/ros/humble/setup.bash  # use jazzy instead on Ubuntu 24.04
+source simulation/ai_venv/bin/activate
+python3 -m pip install -c rasid_video_pipeline/constraints-ai.txt -r rasid_video_pipeline/requirements.txt -e rasid_video_pipeline
+python3 -m pip check
+```
 
-4. Set your OpenAI key (used for VLM verification via `gpt-4o-mini`):
-   ```
-   export OPENAI_API_KEY=sk-...
-   ```
+The tested compatibility pins are Typer 0.27.3, Click 8.4.2 and setuptools 78.1.1.
+The installer applies the same constraints and checks package compatibility.
+See [dependency verification](../docs/DEPENDENCY_FIX.md) for the reasons and tests.
+Grounding DINO selects CPU automatically when CUDA is unavailable.
+
+Set `OPENAI_API_KEY` in your environment or the ignored local `.env` file. Never
+commit credentials.
 
 ## Run it
 
-```
-uvicorn backend:app --port 8001 --reload
+With the simulation and camera running, use the AI environment above, then:
+
+```bash
+cd rasid_video_pipeline
+uvicorn backend:app --host 127.0.0.1 --port 8000
 ```
 
-Then open `dashboard.html` directly in a browser (no build step — it's one
-self-contained file). Type in a path to a video file that's on the same
-machine as the backend, describe who you're looking for, hit **Start
-search**. When a candidate is found, confirm or reject it right in the
-dashboard; while you're deciding, the drone (in this version: the video
-loop) never stops tracking — see the note below.
+Open `dashboard.html` directly in a browser. The page connects to
+`ws://localhost:8000/ws`. Describe the missing person and press **Start search**;
+the default video source is the live ROS camera. Confirm or reject candidates
+on the page. Crowd counting runs in the background with the same detector.
+The backend now requires ROS at startup for its continuous camera worker.
 
-The annotated output video is written to `outputs/annotated_<name>.mp4`
-once the video finishes.
+Annotated search output is written to `outputs/`.
 
 ## Why tracking doesn't wait for your confirmation
 

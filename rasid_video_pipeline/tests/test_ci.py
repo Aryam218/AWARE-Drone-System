@@ -1,10 +1,34 @@
 import unittest
 import sys
 import subprocess
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 
 class TestCLI(unittest.TestCase):
     """Test cases for the CloudTrack CLI functionality."""
+
+    def test_backend_options_reach_command(self):
+        from cloud_track.cli import app
+        from typer.testing import CliRunner
+        run_backend = Mock()
+        with patch.dict(sys.modules, {
+            'cloud_track.api_functions.run_backend': SimpleNamespace(run_backend=run_backend)
+        }):
+            result = CliRunner().invoke(app, ['backend', '--ip', '127.0.0.1', '--port', '8123',
+                                             '--system-prompt', 'Test prompt', '--detector-name', 'sam_lq',
+                                             '--vlm', 'gpt-4o-mini'])
+        self.assertEqual(result.exit_code, 0, str(result.exception)+result.output)
+        run_backend.assert_called_once_with('127.0.0.1', 8123, 'Test prompt', 'sam_lq', 'gpt-4o-mini')
+
+    def test_subcommand_help(self):
+        from cloud_track.cli import app
+        from typer.testing import CliRunner
+        for command in ('backend', 'video-demo', 'live-demo'):
+            with self.subTest(command=command):
+                result = CliRunner().invoke(app, [command, '--help'])
+                self.assertEqual(result.exit_code, 0, str(result.exception)+result.output)
+                self.assertIn('Usage:', result.output)
 
     def test_cli_help_output(self):
         """Test that 'python -m cloud_track --help' returns valid output."""

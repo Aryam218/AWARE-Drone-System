@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # =====================================================================
-# AWARE simulation: one-time installer for Ubuntu 24.04
+# AWARE simulation: one-time installer for Ubuntu 24.04 (ROS 2 Jazzy)
+#                   or Ubuntu 22.04 (ROS 2 Humble)
 #
 #   cd <this repository>
 #   bash setup/install.sh
@@ -25,15 +26,19 @@ trap 'fail "the step above failed (line $LINENO). Send setup/install.log to the 
 # ---------------------------------------------------------------- 0
 step 0 "Checking the computer"
 . /etc/os-release
-[ "$VERSION_ID" = "24.04" ] || fail "This needs Ubuntu 24.04 (found $PRETTY_NAME)."
+case "$VERSION_ID" in
+  24.04) AWARE_ROS=jazzy ;;
+  22.04) AWARE_ROS=humble ;;
+  *) fail "This needs Ubuntu 22.04 or 24.04 (found $PRETTY_NAME)." ;;
+esac
 case "$ROOT" in *" "*) fail "The folder path contains a space: $ROOT. Move the repository to a path without spaces.";; esac
-ok "Ubuntu 24.04, repository at $ROOT"
+ok "Ubuntu $VERSION_ID (ROS 2 $AWARE_ROS), repository at $ROOT"
 FREE_GB=$(df -BG --output=avail "$ROOT" | tail -1 | tr -dc '0-9')
 [ "$FREE_GB" -ge 25 ] || warn "Only ${FREE_GB} GB free; about 25 GB is recommended."
 
 # ---------------------------------------------------------------- 1
-step 1 "ROS 2 Jazzy (robot software framework)"
-if [ -f /opt/ros/jazzy/setup.bash ]; then
+step 1 "ROS 2 $AWARE_ROS (robot software framework)"
+if [ -f "/opt/ros/$AWARE_ROS/setup.bash" ]; then
   ok "already installed"
 else
   sudo apt update
@@ -46,11 +51,19 @@ else
     sudo dpkg -i /tmp/ros2-apt-source.deb
   fi
   sudo apt update
-  sudo apt install -y ros-jazzy-desktop ros-dev-tools
+  sudo apt install -y "ros-$AWARE_ROS-desktop" ros-dev-tools
 fi
-sudo apt install -y ros-jazzy-ros-gz ros-jazzy-rqt-image-view mesa-utils git \
+sudo apt install -y "ros-$AWARE_ROS-rqt-image-view" mesa-utils git lsb-release \
                     python3-yaml python3-jinja2 python3-matplotlib python3-venv
-ok "ROS 2 Jazzy + Gazebo bridge + tools"
+if [ "$AWARE_ROS" = "jazzy" ]; then
+  # Jazzy's standard bridge is built for Gazebo Harmonic.
+  sudo apt install -y ros-jazzy-ros-gz
+  ok "ROS 2 Jazzy + Gazebo bridge + tools"
+else
+  # Humble's standard bridge is built for an older Gazebo (Fortress), so the
+  # Harmonic version (ros-humble-ros-gzharmonic) is installed after step 3.
+  ok "ROS 2 Humble + tools (Gazebo bridge comes after step 3)"
+fi
 
 # ---------------------------------------------------------------- 2
 step 2 "PX4 autopilot source (version: $PX4_REF)"
@@ -72,9 +85,26 @@ fi
 # Known problem: PX4's script can put NumPy 2 into ~/.local, which breaks ROS tools.
 if python3 -c "import numpy,sys; sys.exit(0 if numpy.__version__.startswith('2') and '.local' in numpy.__file__ else 1)" 2>/dev/null; then
   warn "Removing NumPy 2 from ~/.local (conflicts with ROS)"
-  python3 -m pip uninstall -y numpy --break-system-packages
+  python3 -m pip uninstall -y numpy --break-system-packages 2>/dev/null \
+    || python3 -m pip uninstall -y numpy          # older pip (Ubuntu 22.04)
 fi
 ok "NumPy for the system: $(python3 -c 'import numpy;print(numpy.__version__)')"
+
+# Humble only: the Gazebo-ROS bridge built for Gazebo Harmonic.
+# It comes from the Gazebo package server (normally added by PX4's script above).
+if [ "$AWARE_ROS" = "humble" ]; then
+  sudo apt update
+  if ! apt-cache show ros-humble-ros-gzharmonic >/dev/null 2>&1; then
+    warn "Adding the Gazebo package server"
+    sudo curl -sSL https://packages.osrfoundation.org/gazebo.gpg \
+      -o /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" \
+      | sudo tee /etc/apt/sources.list.d/gazebo-stable.list >/dev/null
+    sudo apt update
+  fi
+  sudo apt install -y ros-humble-ros-gzharmonic
+  ok "Gazebo-ROS bridge for Humble + Harmonic"
+fi
 
 # ---------------------------------------------------------------- 4
 step 4 "Building PX4 for simulation (10-30 minutes the first time)"
@@ -88,7 +118,7 @@ fi
 step 5 "Python environment for AWARE (aware_venv)"
 if [ ! -d "$ROOT/aware_venv" ]; then
   # shellcheck disable=SC1091
-  source /opt/ros/jazzy/setup.bash
+  source "/opt/ros/$AWARE_ROS/setup.bash"
   python3 -m venv --system-site-packages "$ROOT/aware_venv"
 fi
 # shellcheck disable=SC1091
@@ -128,14 +158,15 @@ if [ ! -d "$AI_DIR" ]; then
 else
   if [ ! -d "$ROOT/ai_venv" ]; then
     # shellcheck disable=SC1091
-    source /opt/ros/jazzy/setup.bash
+    source "/opt/ros/$AWARE_ROS/setup.bash"
     python3 -m venv --system-site-packages "$ROOT/ai_venv"     # sees ROS (rclpy)
   fi
   # shellcheck disable=SC1091
   source "$ROOT/ai_venv/bin/activate"
-  [ -f "$AI_DIR/requirements.txt" ] && pip install -r "$AI_DIR/requirements.txt" "numpy<2"
-  [ -f "$AI_DIR/pyproject.toml" ] && pip install -e "$AI_DIR" "numpy<2"
-  pip install supervision python-dotenv openai "numpy<2"
+  [ -f "$AI_DIR/requirements.txt" ] && pip install -c "$AI_DIR/constraints-ai.txt" -r "$AI_DIR/requirements.txt" "numpy<2"
+  [ -f "$AI_DIR/pyproject.toml" ] && pip install -c "$AI_DIR/constraints-ai.txt" -e "$AI_DIR" "numpy<2"
+  pip install -c "$AI_DIR/constraints-ai.txt" supervision python-dotenv openai "numpy<2"
+  python3 -m pip check
   python3 -c "import rclpy, cloud_track, supervision; print('AI imports OK')" || warn "an AI import failed (see above)"
   deactivate
   if [ ! -f "$AI_DIR/.env" ]; then

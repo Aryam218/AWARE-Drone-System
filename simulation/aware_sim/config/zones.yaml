@@ -72,39 +72,46 @@ launch_pad:
 # ---------------------------------------------------------------------
 zones:
   - id: entrance
+    display_name: Entrance
     type: area
     capacity: 60
     polygon: [[-6, -25], [6, -25], [6, -19], [-6, -19]]
 
   - id: walkway
+    display_name: Walkway
     type: area
     capacity: 120
     polygon: [[-4, -19], [4, -19], [4, 4], [-4, 4]]
 
   - id: plaza
+    display_name: Plaza
     type: area
     capacity: 250
     polygon: [[-14, 4], [14, 4], [14, 18.5], [-14, 18.5]]
 
   - id: booth_a_front
+    display_name: Booth A front
     type: booth_front
     booth: booth_a
     capacity: 25
     polygon: [[-27, -16], [-22, -16], [-22, -8], [-27, -8]]
 
   - id: booth_b_front
+    display_name: Booth B front
     type: booth_front
     booth: booth_b
     capacity: 25
     polygon: [[-27, 2], [-22, 2], [-22, 10], [-27, 10]]
 
   - id: booth_c_front
+    display_name: Booth C front
     type: booth_front
     booth: booth_c
     capacity: 25
     polygon: [[22, -16], [27, -16], [27, -8], [22, -8]]
 
   - id: booth_d_front
+    display_name: Booth D front
     type: booth_front
     booth: booth_d
     capacity: 25

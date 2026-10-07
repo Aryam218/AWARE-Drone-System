@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools==75.6.0", "wheel==0.45.1"]
+requires = ["setuptools==78.1.1", "wheel==0.45.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,7 +12,7 @@ description = "Detection of objects in videos based on deep learning."
 requires-python = ">=3.9" # NOTE: oldest non-EOL python (update on 10.2025)
 dependencies = [
     "torch",
-    "typer==0.13.1",
+    "typer==0.27.3",
     "loguru==0.7.2",
     "msgpack==1.1.0",
     "tinyrpc==1.1.7",
@@ -20,7 +20,8 @@ dependencies = [
     "requests==2.32.3",
     "opencv-contrib-python==4.9.0.80",
     "numpy==1.26.4",
-    "click<8.1"
+    "click==8.4.2",
+    "setuptools==78.1.1"
     ]
 
 [project.scripts]

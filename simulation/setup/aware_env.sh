@@ -4,7 +4,11 @@
 export AWARE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export AWARE_AI_DIR="${AWARE_AI_DIR:-$(cd "$AWARE_ROOT/.." && pwd)/rasid_video_pipeline}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
-[ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash
+# ROS 2: Jazzy on Ubuntu 24.04, Humble on Ubuntu 22.04 (whichever is installed)
+for _d in jazzy humble; do
+  if [ -f "/opt/ros/$_d/setup.bash" ]; then source "/opt/ros/$_d/setup.bash"; break; fi
+done
+unset _d
 
 alias aware_run='"$AWARE_ROOT/launch/aware_run.sh"'        # everything, one command
 alias aware_start='"$AWARE_ROOT/launch/start_all.sh"'      # simulation only (world, PX4, GUI, bridge)

@@ -1,0 +1,4 @@
+# Tested CLI compatibility with Hugging Face Hub; setuptools fits PyTorch and ROS colcon.
+typer==0.27.3
+click==8.4.2
+setuptools==78.1.1
