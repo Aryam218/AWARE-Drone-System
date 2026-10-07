@@ -2,7 +2,7 @@
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import numpy as np
 from fastapi.testclient import TestClient
 import backend as b
@@ -63,6 +63,40 @@ class ProtocolTests(unittest.TestCase):
             b._run_thread.join(3)
             self.assertIn('error',client.post('/confirm',json={'decision':'confirm'}).json())
             self.assertIn('error',client.post('/start',json={'video_path':'','description':'x'}).json())
+    def test_rejected_start_restores_idle_status(self):
+        with patch.object(b, '_run_thread', None), TestClient(b.app) as client:
+            with client.websocket_connect('/ws') as ws:
+                self.assertEqual(ws.receive_json()['state'], 'idle')
+                for command in (
+                    dict(type='start_person_search', description='', request_id='empty'),
+                    dict(type='start_person_search', request_id='missing'),
+                    dict(type='start_person_search', description='red', request_id=123),
+                ):
+                    ws.send_json(command)
+                    self.assertEqual(ws.receive_json()['type'], 'error')
+                    restored = ws.receive_json()
+                    self.assertEqual(restored['type'], 'search_status')
+                    self.assertEqual(restored['state'], 'idle')
+                    expected_id = command['request_id'] if isinstance(command['request_id'], str) else None
+                    self.assertEqual(restored['request_id'], expected_id)
+                    self.assertEqual(b._status['state'], 'idle')
+
+    def test_duplicate_start_preserves_active_search(self):
+        active = Mock()
+        active.is_alive.return_value = True
+        b._status = dict(type='search_status', state='confirmed', message='Tracking continues.',
+                         sim_time=10, request_id='original')
+        with patch.object(b, '_run_thread', active), TestClient(b.app) as client:
+            with client.websocket_connect('/ws') as ws:
+                self.assertEqual(ws.receive_json()['state'], 'confirmed')
+                ws.send_json(dict(type='start_person_search', description='red', request_id='duplicate'))
+                self.assertEqual(ws.receive_json()['type'], 'error')
+                restored = ws.receive_json()
+                self.assertEqual(restored['state'], 'confirmed')
+                self.assertEqual(restored['request_id'], 'duplicate')
+                self.assertIs(b._run_thread, active)
+                self.assertEqual(b._status['request_id'], 'original')
+
     def test_runner_observes_verified_position_before_confirmation(self):
         from unittest.mock import Mock
         from types import SimpleNamespace

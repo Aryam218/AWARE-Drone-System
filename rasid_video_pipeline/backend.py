@@ -287,6 +287,14 @@ async def start(req: StartRequest):
 async def confirm(req: ConfirmRequest):
     return decide(req)
 
+async def send_current_status(ws, request_id=None):
+    # A rejected start must replace the browser's optimistic "Starting search".
+    # Reply only to that client; the active search and other clients stay unchanged.
+    with _lock:
+        payload = dict(_status, request_id=request_id)
+    await ws.send_json(payload)
+
+
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     await HUB.connect(ws)
@@ -298,14 +306,15 @@ async def ws_endpoint(ws: WebSocket):
                 await ws.send_json(payload)
         while True:
             request_id = None
+            kind = None
             try:
                 command = json.loads(await ws.receive_text())
                 if not isinstance(command,dict):
                     raise ValueError("Command must be a JSON object.")
+                kind = command.get("type")
                 request_id = command.get("request_id")
                 if request_id is not None and not isinstance(request_id,str):
                     raise ValueError("request_id must be a string.")
-                kind = command.get("type")
                 if kind == "start_person_search":
                     result = start_search(StartRequest(video_path=command.get("video_path","ros"),description=command.get("description"),category=command.get("category","person")),request_id)
                 elif kind in {"confirm_candidate","reject_candidate"}:
@@ -315,8 +324,13 @@ async def ws_endpoint(ws: WebSocket):
                     continue
                 if "error" in result:
                     await ws.send_json(error(result["error"],request_id=request_id))
+                    if kind == "start_person_search":
+                        await send_current_status(ws, request_id)
             except (ValueError,ValidationError) as exc:
-                await ws.send_json(error(str(exc),"invalid_request",request_id if isinstance(request_id,str) else None))
+                valid_request_id = request_id if isinstance(request_id, str) else None
+                await ws.send_json(error(str(exc),"invalid_request",valid_request_id))
+                if kind == "start_person_search":
+                    await send_current_status(ws, valid_request_id)
     except WebSocketDisconnect:
         pass
     finally:

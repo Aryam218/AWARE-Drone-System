@@ -16,6 +16,29 @@ class WebSocket {static OPEN=1;constructor(){this.readyState=1;}send(payload){th
 const ctx=vm.createContext({document,WebSocket,console,setTimeout(){},alert(){}});
 vm.runInContext(script,ctx);
 const call=s=>vm.runInContext(s,ctx);
+// Idle/crowd-only activity must not imply an active missing-person search.
+assert(html.includes('id="searchStatusTitle">\n                        Ready to search'));
+for (const [state, title, busy] of [
+  ['idle','Ready to search',false],
+  ['searching','Searching for matching candidates',true],
+  ['awaiting_decision','Candidate found — review required',false],
+  ['confirming','Applying confirmation',true],
+  ['resuming_search','Applying rejection',true],
+  ['confirmed','Confirmed — tracking person',true],
+  ['finished','Search stopped',false],
+]) {
+  call(`handleBackendMessage(${JSON.stringify({type:'search_status',state,message:'Backend message'})})`);
+  assert.strictEqual(document.getElementById('searchStatusTitle').textContent,title);
+  assert.strictEqual(document.getElementById('searchActivityIndicator').hidden,!busy);
+}
+call('handleBackendMessage({type:"search_status",state:"idle",message:"Ready to search."})');
+call('handleBackendMessage({type:"crowd_snapshot",sim_time:0,image:"data:image/jpeg;base64,example"})');
+assert.strictEqual(document.getElementById('searchStatusTitle').textContent,'Ready to search');
+assert.strictEqual(document.getElementById('searchActivityIndicator').hidden,true);
+call('startSearch()');
+assert.strictEqual(document.getElementById('searchStatusTitle').textContent,'Starting search');
+call('handleBackendMessage({type:"search_status",state:"idle",message:"Ready to search."})');
+console.log('Search state headings and activity indicators passed.');
 call('handleBackendMessage({type:"candidate",candidate_id:"one",image:"data:image/jpeg;base64,example",justification:"Red top"})');
 call('confirmCandidate()');
 assert(!document.getElementById('confirmedCard').classList.contains('visible'));
@@ -61,3 +84,23 @@ assert(document.getElementById('crowdSnapshotImage').src.startsWith('data:image/
 call('handleBackendMessage({type:"search_status",sim_time:105,state:"confirmed",message:"tracking"})');
 assert.strictEqual(document.getElementById('zoneAge-entrance').textContent,'seen 22 s ago');
 console.log('Crowd snapshot, partial coverage, unknown occupancy, exact percentages and zone ages passed.');
+
+// Reconnecting to a restarted idle backend clears the previous confirmed target.
+call('handleBackendMessage({type:"candidate",candidate_id:"old",image:"data:image/jpeg;base64,example",justification:"test"})');
+call('handleBackendMessage({type:"search_status",state:"confirmed",message:"Confirmed"})');
+call('handleBackendMessage({type:"person_location",location:{lat:24,lon:46},drone:null,position_sim_time:100,sim_time:100})');
+call('handleBackendMessage({type:"search_status",state:"idle",message:"Ready to search."})');
+assert(!document.getElementById('confirmedCard').classList.contains('visible'));
+assert(!document.getElementById('candidateCard').classList.contains('visible'));
+assert.strictEqual(document.getElementById('personLocation').textContent,'Location unavailable');
+assert.strictEqual(call('currentCandidateId'),null);
+assert.strictEqual(call('confirmedAcknowledged'),false);
+assert.strictEqual(document.getElementById('startSearchButton').disabled,false);
+call('startSearch()');
+call('handleBackendMessage({type:"error",code:"command_rejected",message:"Search refused."})');
+// The backend follows a rejected start with the authoritative search_status.
+call('handleBackendMessage({type:"search_status",state:"idle",message:"Ready to search."})');
+assert.strictEqual(document.getElementById('searchStatusTitle').textContent,'Ready to search');
+assert.strictEqual(document.getElementById('searchActivityIndicator').hidden,true);
+assert.strictEqual(document.getElementById('searchError').textContent,'Search refused.');
+console.log('Idle reconnect clears stale cards; rejected-start state restoration passed.');

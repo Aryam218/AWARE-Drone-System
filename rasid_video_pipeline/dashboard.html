@@ -1817,19 +1817,19 @@ footer {
 
             <div class="status-row">
 
-                <div class="activity-indicator"></div>
+                <div class="activity-indicator" id="searchActivityIndicator" hidden></div>
 
                 <div>
 
-                    <div class="status-title">
-                        Searching for matching candidates
+                    <div class="status-title" id="searchStatusTitle">
+                        Ready to search
                     </div>
 
                     <div
                         class="status-text"
                         id="searchStatusText"
                     >
-                        AWARE is analyzing the drone camera feed...
+                        Enter a description and click Start Search.
                     </div>
 
                 </div>
@@ -2131,7 +2131,7 @@ function handleBackendMessage(data) {
     refreshZoneAges();
     if (data.type === "candidate") showCandidate(data);
     if (data.type === "search_status") {
-        updateSearchStatus(data.message);
+        updateSearchStatus(data.message, data.state);
         if (data.state === "searching") {
             clearPersonCards();
             if (data.gpt_verification_off === false) document.getElementById("gptWarning").textContent = "";
@@ -2147,7 +2147,7 @@ function handleBackendMessage(data) {
             document.getElementById("confirmedCard").classList.add("visible");
         }
         document.getElementById("startSearchButton").disabled = data.state !== "idle" && data.state !== "finished";
-        if (data.state === "finished") clearPersonCards();
+        if (data.state === "idle" || data.state === "finished") clearPersonCards();
     }
     if (data.type === "person_location" && confirmedAcknowledged) showConfirmedLocation(data);
     if (data.type === "tracking_update") {
@@ -2157,7 +2157,7 @@ function handleBackendMessage(data) {
     }
     if (data.type === "rejected" || data.type === "lost") {
         clearPersonCards();
-        updateSearchStatus(data.type === "lost" ? "Target lost. Searching again." : "Rejected. Searching again.");
+        updateSearchStatus(data.type === "lost" ? "Target lost. Searching again." : "Rejected. Searching again.", "searching");
     }
     if (data.type === "error" && data.code === "crowd_failed") {
         document.getElementById("crowdError").textContent = data.message;
@@ -2242,7 +2242,7 @@ function startSearch() {
     if (!description) { alert("Please enter the person's description."); return; }
     document.getElementById("searchError").textContent = "";
     if (sendMessage({type:"start_person_search", description, video_path:"ros"})) {
-        updateSearchStatus("Waiting for the backend to start the search.");
+        updateSearchStatus("Waiting for the backend to start the search.", "starting");
     }
 }
 
@@ -2250,7 +2250,23 @@ function startSearch() {
    SEARCH STATUS
 ========================================================= */
 
-function updateSearchStatus(message) {
+function updateSearchStatus(message, state) {
+    if (state !== undefined) {
+        const titles = {
+            idle: "Ready to search",
+            starting: "Starting search",
+            searching: "Searching for matching candidates",
+            awaiting_decision: "Candidate found — review required",
+            confirming: "Applying confirmation",
+            resuming_search: "Applying rejection",
+            confirmed: "Confirmed — tracking person",
+            finished: "Search stopped"
+        };
+        document.getElementById("searchStatusTitle").textContent = titles[state] ?? "Search status";
+        document.getElementById("searchActivityIndicator").hidden =
+            !["starting", "searching", "confirming", "resuming_search", "confirmed"].includes(state);
+    }
+
 
 
     document
