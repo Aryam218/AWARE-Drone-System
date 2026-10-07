@@ -43,6 +43,20 @@ from ros_frame_source import RosVideoStreamer
 # ============================================================
 # EVENTS
 # ============================================================
+#
+# Event timestamps are the frame's SIMULATION time (seconds)
+# for the live Gazebo camera, and wall-clock time for
+# recorded videos.
+# ============================================================
+
+
+@dataclass
+class VerificationErrorEvent:
+    """Permanent verification failure, reported once to interested UIs."""
+    message: str
+    frame_index: int
+    timestamp: float
+    code: str = "insufficient_quota"
 
 
 @dataclass
@@ -66,6 +80,9 @@ class CandidateEvent:
 class TrackUpdateEvent:
     """
     Fired while the selected candidate/target is being tracked.
+
+    confirmed=False: candidate still waiting for the operator's
+    decision (the box keeps following the person meanwhile).
     """
 
     frame: np.ndarray
@@ -140,7 +157,7 @@ class SearchController:
             ↓
         MATCH
             ↓
-        CANDIDATE
+        CANDIDATE (tracked while the operator decides)
            ↙     ↘
        REJECT   CONFIRM
           ↓        ↓
@@ -211,7 +228,14 @@ class SearchController:
         self._last_candidate_bbox = None
         self._last_candidate_track_id = None
 
-   
+        # A candidate that was LOST a moment ago. On a slow
+        # computer the operator often presses "reject" just
+        # after the box disappeared: that should still count.
+        self._recently_lost = None
+        self._late_reject_pending = False
+        self.late_reject_window_s = 20.0
+
+
     # ========================================================
     # USER ACTIONS
     # ========================================================
@@ -226,6 +250,14 @@ class SearchController:
 
         if self.pipeline.tracker_initialized:
             self._parent_rejected_pending = True
+
+        elif (
+            self._recently_lost is not None
+            and time.monotonic() - self._recently_lost["time"]
+            <= self.late_reject_window_s
+        ):
+            # Reject pressed just after the candidate was lost.
+            self._late_reject_pending = True
 
     def confirm_current_candidate(self) -> None:
         """
@@ -245,12 +277,21 @@ class SearchController:
         self,
         frame: np.ndarray,
         frame_index: int,
+        timestamp: Optional[float] = None,
     ):
         """
         Process one frame and return one event.
+
+        timestamp:
+            Frame time in seconds (simulation time for the live
+            camera). None = use wall-clock time.
         """
 
-        now = time.time()
+        now = (
+            timestamp
+            if timestamp is not None
+            else time.time()
+        )
 
         # --------------------------------------------------------
         # REJECTION
@@ -286,6 +327,41 @@ class SearchController:
                 timestamp=now,
                 track_id=rejected_track_id,
             )
+
+        # --------------------------------------------------------
+        # LATE REJECTION (candidate was lost a moment ago)
+        # --------------------------------------------------------
+
+        if self._late_reject_pending:
+
+            self._late_reject_pending = False
+
+            lost = self._recently_lost
+            self._recently_lost = None
+
+            backend = self.pipeline.backend
+
+            if lost is not None:
+
+                if hasattr(backend, "reject_place"):
+                    backend.reject_place(
+                        lost["box"],
+                        lost["pose"],
+                        lost["frame"],
+                        latlon=lost.get("ground"),
+                    )
+
+                if (
+                    lost["track_id"] is not None
+                    and hasattr(backend, "reject_track_id")
+                ):
+                    backend.reject_track_id(lost["track_id"])
+
+                return RejectedEvent(
+                    frame_index=frame_index,
+                    timestamp=now,
+                    track_id=lost["track_id"],
+                )
 
         # --------------------------------------------------------
         # CONFIRMATION
@@ -330,11 +406,24 @@ class SearchController:
             self.pipeline.current_track_id
         )
 
+        # Same for the target's last VERIFIED position (for a
+        # late rejection).
+        previous_target = (
+            self.pipeline.verified_target()
+            if hasattr(self.pipeline, "verified_target")
+            else None
+        )
+
+        if previous_target is not None:
+            previous_target = dict(previous_target)
+            previous_target["track_id"] = previous_track_id
+
         bbox, justification, score = (
             self.pipeline.forward(
                 frame,
                 category=self.category,
                 description=self.description,
+                timestamp=timestamp,
             )
         )
 
@@ -366,6 +455,13 @@ class SearchController:
             self._last_candidate_frame = None
             self._last_candidate_bbox = None
             self._last_candidate_track_id = None
+
+            # Only an unconfirmed candidate can be rejected late.
+            if not was_confirmed and previous_target is not None:
+                previous_target["time"] = time.monotonic()
+                self._recently_lost = previous_target
+            else:
+                self._recently_lost = None
 
             return LostEvent(
                 frame_index=frame_index,
@@ -527,12 +623,17 @@ def run_on_video(
     on_frame: Optional[
         Callable[[np.ndarray, object], None]
     ] = None,
+    on_verification_error: Optional[Callable[[VerificationErrorEvent], None]] = None,
 ) -> None:
     """
-    Run AWARE on a test video.
+    Run AWARE on a test video or the live Gazebo camera
+    (video_path="ros").
 
-    Later, VideoStreamer will be replaced by the Gazebo /
-    ROS2 camera stream while SearchController remains the same.
+    The frame loop never pauses for the operator: while a
+    candidate waits for confirm / reject, the local tracker
+    keeps following them (TrackUpdateEvent with
+    confirmed=False). The decision is picked up at the start
+    of the next frame.
     """
 
     controller = SearchController(
@@ -544,7 +645,70 @@ def run_on_video(
         video_path
     )
 
+    # --------------------------------------------------------
+    # DRONE POSITION (live simulation only)
+    # --------------------------------------------------------
+    #
+    # Read with every frame, so a rejected person can be
+    # remembered as a PLACE on the ground (see aware_geo.py).
+    # --------------------------------------------------------
+
+    drone_reader = None
+    target_pub = None
+
+    if video_path == "ros":
+
+        try:
+            from drone_state import DroneStateReader, TargetPublisher
+
+            drone_reader = DroneStateReader()
+
+            # Tells the patrol where the candidate stands, so the
+            # drone can fly to look at them and follow them.
+            target_pub = TargetPublisher()
+
+        except Exception as exc:
+            print(
+                "[AWARE] drone position unavailable, rejected "
+                f"places will not be remembered: {exc}"
+            )
+
+    def publish_target(event) -> None:
+        """Send the candidate's ground position to the patrol."""
+
+        if target_pub is None or event is None:
+            return
+
+        try:
+
+            if isinstance(event, (LostEvent, RejectedEvent)):
+                target_pub.publish("none", track_id=event.track_id)
+                return
+
+            if isinstance(event, CandidateEvent):
+                state = "candidate"
+            elif isinstance(event, ConfirmedEvent):
+                state = "confirmed"
+            elif isinstance(event, TrackUpdateEvent):
+                state = "confirmed" if event.confirmed else "candidate"
+            else:
+                return
+
+            # The last VERIFIED ground position, not the small
+            # tracker's box: while the drone flies and turns, that
+            # box can stay on the wrong spot of the image, which
+            # would send the drone after a phantom.
+            target = controller.pipeline.verified_target()
+            ground = target["ground"] if target is not None else None
+
+            if ground is not None:
+                target_pub.publish(state, ground, track_id=event.track_id)
+
+        except Exception as exc:
+            print(f"[AWARE] could not publish the target position: {exc}")
+
     writer = None
+    verification_error_reported = False
 
     # --------------------------------------------------------
     # OPTIONAL OUTPUT VIDEO
@@ -583,11 +747,28 @@ def run_on_video(
     for frame_index, frame in enumerate(
         stream
     ):
-    
- 
+
+        # Simulation time of this frame (live camera only;
+        # recorded videos have no last_stamp -> None).
+        frame_time = getattr(
+            stream,
+            "last_stamp",
+            None,
+        )
+
+        # Drone pose for THIS frame (read right after the frame
+        # arrived, so both describe the same moment).
+        if drone_reader is not None:
+            controller.pipeline.backend.frame_pose = (
+                drone_reader.frame_pose()
+            )
 
         # ----------------------------------------------------
         # DASHBOARD ACTIONS
+        # ----------------------------------------------------
+        #
+        # Checked every frame. The controller applies the
+        # decision inside process_frame() below.
         # ----------------------------------------------------
 
         if (
@@ -610,13 +791,28 @@ def run_on_video(
             controller.process_frame(
                 frame,
                 frame_index,
+                timestamp=frame_time,
             )
         )
+
+        verification_error = getattr(controller.pipeline.backend, "verification_error", None)
+        if verification_error is not None and not verification_error_reported:
+            verification_error_reported = True
+            if on_verification_error is not None:
+                on_verification_error(VerificationErrorEvent(
+                    message=verification_error,
+                    frame_index=frame_index,
+                    timestamp=frame_time if frame_time is not None else time.time(),
+                ))
 
         annotated = frame
 
         # ----------------------------------------------------
         # POSSIBLE MATCH
+        # ----------------------------------------------------
+        #
+        # No waiting here: the next frames keep tracking the
+        # candidate until the operator confirms or rejects.
         # ----------------------------------------------------
 
         if isinstance(
@@ -640,76 +836,6 @@ def run_on_video(
             on_candidate(
                 event
             )
-
-            # ------------------------------------------------
-            # WAIT FOR OPERATOR DECISION
-            # ------------------------------------------------
-
-            while True:
-
-                # --------------------------------------------
-                # REJECT
-                # --------------------------------------------
-
-                if (
-                    should_reject
-                    and should_reject()
-                ):
-
-                    controller.reject_current_candidate()
-
-                    rejected_event = (
-                        controller.process_frame(
-                            frame,
-                            frame_index,
-                        )
-                    )
-
-                    if isinstance(
-                        rejected_event,
-                        RejectedEvent,
-                    ):
-
-                        if on_rejected is not None:
-                            on_rejected(
-                                rejected_event
-                            )
-
-                    break
-
-                # --------------------------------------------
-                # CONFIRM
-                # --------------------------------------------
-
-                if (
-                    should_confirm
-                    and should_confirm()
-                ):
-
-                    controller.confirm_current_candidate()
-
-                    confirmed_event = (
-                        controller.process_frame(
-                            frame,
-                            frame_index,
-                        )
-                    )
-
-                    if isinstance(
-                        confirmed_event,
-                        ConfirmedEvent,
-                    ):
-
-                        if on_confirmed is not None:
-                            on_confirmed(
-                                confirmed_event
-                            )
-
-                    break
-
-                time.sleep(
-                    0.05
-                )
 
         # ----------------------------------------------------
         # TRACKING
@@ -809,12 +935,18 @@ def run_on_video(
 
 
         # ----------------------------------------------------
+        # TARGET POSITION -> PATROL
+        # ----------------------------------------------------
+
+        publish_target(event)
+
+        # ----------------------------------------------------
         # LIVE VIEW
         # ----------------------------------------------------
 
         if on_frame is not None:
             on_frame(annotated, event)
-            
+
         # ----------------------------------------------------
         # OPTIONAL VIDEO OUTPUT
         # ----------------------------------------------------
@@ -831,3 +963,9 @@ def run_on_video(
 
     if hasattr(stream, "release"):
         stream.release()
+
+    if drone_reader is not None:
+        drone_reader.release()
+
+    if target_pub is not None:
+        target_pub.release()

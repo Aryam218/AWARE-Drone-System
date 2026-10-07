@@ -10,7 +10,8 @@ its own, slower pace (Grounding DINO + GPT), so the view never waits for it.
        └─────► AI search (background, as fast as it can) ──► boxes + status
 
 You play the operator: press c (confirm) or r (reject) in the window, or type
-c / r + Enter in the terminal. q in the window quits.
+c / r + Enter in the terminal. q in the window quits. While you decide, the AI
+keeps following the candidate with the box.
 
     python3 run_live.py
     python3 run_live.py --description "a person wearing a red top and white trousers"
@@ -26,6 +27,7 @@ import cv2
 
 from ros_frame_source import RosFrameSource
 from aware_status import publish_status         # tells the patrol to hold / resume
+from drone_state import DroneStateReader        # drone GPS from the patrol
 
 SEARCH_MODULE = "pipeline_runner"  # your search engine file (no .py)
 WINDOW = "AWARE live search"
@@ -66,19 +68,30 @@ def _on_ai_frame(annotated, event):
     with _lock:
         if name == "Searching" and _overlay["state"] == "CandidateEvent":
             return                                 # keep the candidate until you decide
+        # A candidate being followed while you decide: keep showing
+        # POSSIBLE MATCH, but move the box with the person.
+        if name == "TrackUpdateEvent" and not event.confirmed:
+            name = "CandidateEvent"
         _overlay["state"] = name
         _overlay["time"] = time.time()
         bbox = getattr(event, "bbox", None)
         _overlay["bbox"] = None if bbox is None else [int(v) for v in bbox]
-        if name == "TrackUpdateEvent":
-            _overlay["label"] = "confirmed target" if event.confirmed else "candidate"
-        elif name in ("CandidateEvent", "ConfirmedEvent"):
+        if name == "CandidateEvent":
+            _overlay["label"] = f"candidate ID {event.track_id}"
+        elif name == "TrackUpdateEvent":
+            _overlay["label"] = "confirmed target"
+        elif name == "ConfirmedEvent":
             _overlay["label"] = f"ID {event.track_id}"
 
 
+def _on_verification_error(event):
+    """Keep the permanent failure visible even while frames continue arriving."""
+    with _lock:
+        _overlay["verification_error"] = event.message
+
+
 def _on_ai_candidate(event):
-    """The pipeline waits for your c/r decision BEFORE its next on_frame call,
-    so the candidate box must be set here, as soon as the candidate appears."""
+    """Show the candidate box as soon as the candidate appears."""
     with _lock:
         _overlay.update(state="CandidateEvent", time=time.time(),
                         bbox=[int(v) for v in event.bbox], label=f"candidate ID {event.track_id}")
@@ -90,6 +103,8 @@ def _draw(frame):
     text, color = STATUS.get(st["state"], (st["state"], (255, 255, 255)))
     if st["state"] == "TrackUpdateEvent" and st["label"] == "confirmed target":
         text = "TRACKING CONFIRMED TARGET"
+    if st.get("verification_error"):
+        text, color = st["verification_error"], (0, 0, 255)
     age = time.time() - st["time"]
     keep = st["state"] in ("CandidateEvent", "ConfirmedEvent")   # stay until the next event
     if st["bbox"] is not None and (keep or age < 3.0):              # hide stale tracking boxes
@@ -105,6 +120,21 @@ def _draw(frame):
     return frame
 
 
+def _print_confirmed(event, drone):
+    print(f"[CONFIRMED] ID {event.track_id}")
+    loc = drone.location()
+    if loc is None:
+        print("            location: unknown (is the patrol flying?)")
+        return
+    d = loc["drone"]
+    print(f"            drone at   lat {d['lat']:.7f}, lon {d['lon']:.7f}, "
+          f"{d['alt_rel_m']:.1f} m up")
+    t = loc["target_estimate"]
+    if t is not None:
+        print(f"            person ~at lat {t['lat']:.7f}, lon {t['lon']:.7f} "
+              f"(camera view centre, ~{t['meters_ahead_of_drone']} m ahead)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--category", default="person")
@@ -114,6 +144,7 @@ def main():
 
     search = importlib.import_module(SEARCH_MODULE)
     viewer = RosFrameSource()                      # the LIVE view's own camera feed
+    drone = DroneStateReader()                     # latest drone position
     publish_status("searching")                    # announce ourselves early (ROS discovery)
     threading.Thread(target=_keyboard, daemon=True).start()
 
@@ -130,13 +161,14 @@ def main():
             on_lost=lambda e: (publish_status("lost", track_id=e.track_id),
                                print(f"[LOST] ID {e.track_id} (was confirmed: {e.was_confirmed})")),
             on_confirmed=lambda e: (publish_status("confirmed", track_id=e.track_id),
-                                    print(f"[CONFIRMED] ID {e.track_id}")),
+                                    _print_confirmed(e, drone)),
             on_rejected=lambda e: (publish_status("rejected", track_id=e.track_id),
-                                   print(f"[REJECTED] ID {e.track_id}: will not be shown again")),
+                                   print(f"[REJECTED] ID {e.track_id}")),
             should_confirm=lambda: _take("confirm"),
             should_reject=lambda: _take("reject"),
             output_video_path=args.save,
             on_frame=_on_ai_frame,
+            on_verification_error=_on_verification_error,
         )
 
     ai = threading.Thread(target=ai_worker, daemon=True)
@@ -171,6 +203,7 @@ def main():
     finally:
         print("\nStopped.")
         viewer.release()
+        drone.release()
         cv2.destroyAllWindows()
 
 

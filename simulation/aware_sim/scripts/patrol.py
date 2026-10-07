@@ -21,8 +21,13 @@ Flight phases (like a pilot's checklist):
   3. UPLOAD    send the waypoint list (the "flight plan") to PX4
   4. TAKEOFF   arm the motors and climb to patrol altitude
   5. MISSION   PX4 flies the waypoints itself; we watch progress and the AI:
-               a candidate / confirmed person makes the drone HOLD position,
-               a rejection / lost target RESUMES the patrol
+               a candidate / confirmed person PAUSES the patrol, and the
+               drone flies to LOOK AT the person (the AI sends where they
+               stand on /aware/target) and follows them if they walk;
+               a rejection / lost target RESUMES the patrol.
+               The drone's position is published on /aware/drone/state
+               (JSON, 10 times per second) so the AI / dashboard can
+               work out WHERE people stand.
   6. RETURN    return to the launch pad and land (or hover)
 Ctrl+C at any time = return to launch (a safe default, never "just stop").
 """
@@ -31,6 +36,7 @@ import asyncio
 import math
 import signal
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -48,6 +54,17 @@ except ImportError as e:
              f"Activate the venv (aware) and run: pip install --upgrade \"mavsdk>=4\"")
 
 NAN = math.nan
+DRONE_STATE_TOPIC = "/aware/drone/state"
+DRONE_STATE_PERIOD_S = 0.1          # publish the drone state ten times per second
+TARGET_TOPIC = "/aware/target"      # where the AI's candidate stands
+
+# Looking at / following the candidate
+CAMERA_PITCH_DEG = 45.0             # must match pitch_deg in aware_sim/config/drone.yaml
+FOLLOW_MAX_DISTANCE_M = 80.0        # never fly further than this to look at someone
+FOLLOW_MIN_MOVE_M = 2.0             # re-aim only if the person moved at least this much
+FOLLOW_MIN_PERIOD_S = 1.0           # at most one new flight command per second
+FOLLOW_TARGET_MAX_AGE_S = 3.0       # ignore target positions older than this
+METERS_PER_DEG_LAT = 111_320.0
 
 
 def mission_item(lat, lon, alt, speed):
@@ -73,10 +90,16 @@ def build_mission(venue, patrol, loops):
     return p, items
 
 
-def start_search_listener(loop, queue):
-    """Listen to /aware/search_state (published by the AI) in a background thread
-    and forward each state ("candidate", "confirmed", "rejected", "lost", ...) into
-    an asyncio queue. Returns False if ROS isn't available (patrol still works)."""
+def start_ros(loop, queue, target_holder=None):
+    """Start ROS in a background thread:
+      - listen to /aware/search_state (published by the AI) and forward each state
+        ("candidate", "confirmed", "rejected", "lost", ...) into the asyncio queue
+        (if queue is None, the AI states are ignored: --no-hold)
+      - listen to /aware/target (where the candidate stands) and keep the newest
+        one in target_holder["target"]
+      - publish the drone position on /aware/drone/state
+    Returns a publish(dict) function, or None if ROS isn't available
+    (the patrol still works without ROS)."""
     try:
         import json
         import threading
@@ -84,13 +107,19 @@ def start_search_listener(loop, queue):
         from rclpy.signals import SignalHandlerOptions
         from std_msgs.msg import String
     except ImportError:
-        return False
+        return None
+
+    holder = {}
+    ready = threading.Event()
 
     def run():
         rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
         node = rclpy.create_node("aware_patrol_listener")
+        holder["pub"] = node.create_publisher(String, DRONE_STATE_TOPIC, 10)
 
         def on_msg(msg):
+            if queue is None:
+                return
             try:
                 state = json.loads(msg.data).get("state")
             except ValueError:
@@ -98,10 +127,67 @@ def start_search_listener(loop, queue):
             loop.call_soon_threadsafe(queue.put_nowait, state)
 
         node.create_subscription(String, "/aware/search_state", on_msg, 10)
+
+        def on_target(msg):
+            if target_holder is None:
+                return
+            try:
+                data = json.loads(msg.data)
+            except ValueError:
+                return
+            target_holder["target"] = data
+            target_holder["received"] = time.monotonic()
+
+        node.create_subscription(String, TARGET_TOPIC, on_target, 10)
+        ready.set()
         rclpy.spin(node)
 
     threading.Thread(target=run, daemon=True).start()
-    return True
+    ready.wait(5.0)
+
+    def publish(data):
+        pub = holder.get("pub")
+        if pub is None:
+            return
+        msg = String()
+        msg.data = json.dumps(data)
+        pub.publish(msg)
+
+    return publish
+
+
+def _local_m(origin, point):
+    """(north, east) metres from origin to point, both (lat, lon)."""
+    north = (point[0] - origin[0]) * METERS_PER_DEG_LAT
+    east = (point[1] - origin[1]) * METERS_PER_DEG_LAT * math.cos(math.radians(origin[0]))
+    return north, east
+
+
+def _offset(origin, north, east):
+    """(lat, lon) of origin moved by north / east metres."""
+    lat = origin[0] + north / METERS_PER_DEG_LAT
+    lon = origin[1] + east / (METERS_PER_DEG_LAT * math.cos(math.radians(origin[0])))
+    return lat, lon
+
+
+def viewpoint(target, drone, alt_rel_m, heading_deg):
+    """Where the drone should hover, and which way it should face, so the
+    (fixed, tilted) camera looks straight at target.
+
+    The camera looks down at CAMERA_PITCH_DEG, so it sees the ground
+    alt / tan(pitch) metres ahead of the drone. The viewpoint is that far from
+    the target, on the side the drone is already on (shortest flight).
+    Returns (lat, lon, yaw_deg)."""
+    ahead_m = alt_rel_m / math.tan(math.radians(CAMERA_PITCH_DEG))
+    n, e = _local_m(target, drone)                # target -> drone
+    d = math.hypot(n, e)
+    if d < 1.0:                                   # right above: back off against the heading
+        yaw = math.radians(heading_deg if heading_deg is not None else 0.0)
+        n, e, d = -math.cos(yaw), -math.sin(yaw), 1.0
+    un, ue = n / d, e / d
+    view = _offset(target, un * ahead_m, ue * ahead_m)
+    yaw_deg = math.degrees(math.atan2(-ue, -un)) % 360.0   # face the target
+    return view[0], view[1], yaw_deg
 
 
 async def until_stopped(coro, stop):
@@ -207,34 +293,132 @@ async def fly(venue, patrol, loops, start_mode, hold_on_target=True):
         # The AI tells us what it's doing on /aware/search_state:
         #   candidate / confirmed -> HOLD position (keep the person in view)
         #   rejected / lost       -> RESUME the patrol where it stopped
+        # And we tell the AI where the drone is, on /aware/drone/state.
         states = asyncio.Queue()
-        if hold_on_target and start_search_listener(loop, states):
-            print("  listening to the AI on /aware/search_state (hold on candidate/confirmed)")
+        target_holder = {}
+        publish = start_ros(loop, states if hold_on_target else None, target_holder)
+        if publish is not None:
+            print(f"  publishing the drone position on {DRONE_STATE_TOPIC}")
+            if hold_on_target:
+                print("  listening to the AI on /aware/search_state (hold on candidate/confirmed)")
+
+        # Latest drone state (filled by the telemetry subscriptions).
+        drone = {"heading_deg": None, "lat": None, "lon": None,
+                 "alt_abs_m": None, "alt_rel_m": None,
+                 "roll_deg": 0.0, "pitch_deg": 0.0}
+
+        async def look_at_target(follow):
+            """While paused on a candidate: fly to where the camera sees them,
+            and follow them if they walk. follow = {"goal": (lat, lon) or None,
+            "time": last command time, "warned": bool}."""
+            t = target_holder.get("target")
+            now = time.monotonic()
+            if (t is None or t.get("lat") is None
+                    or t.get("state") not in ("candidate", "confirmed")
+                    or now - target_holder.get("received", 0.0) > FOLLOW_TARGET_MAX_AGE_S):
+                return
+            if None in (drone["lat"], drone["alt_abs_m"], drone["alt_rel_m"]):
+                return
+            goal = (t["lat"], t["lon"])
+            if now - follow["time"] < FOLLOW_MIN_PERIOD_S:
+                return
+            if follow["goal"] is not None:
+                moved = math.hypot(*_local_m(follow["goal"], goal))
+                if moved < FOLLOW_MIN_MOVE_M:
+                    return                                    # person barely moved
+            here = (drone["lat"], drone["lon"])
+            dist = math.hypot(*_local_m(here, goal))
+            if dist > FOLLOW_MAX_DISTANCE_M:
+                if not follow["warned"]:
+                    print(f"  AI: person is {dist:.0f} m away (> {FOLLOW_MAX_DISTANCE_M:.0f} m): "
+                          "holding instead of flying there")
+                    follow["warned"] = True
+                return
+            lat, lon, yaw = viewpoint(goal, here, drone["alt_rel_m"], drone["heading_deg"])
+            try:
+                await action.goto_location(lat, lon, drone["alt_abs_m"], yaw)
+            except Exception as exc:
+                print(f"  AI: could not fly to the person ({exc}); holding position")
+                follow["time"] = now
+                return
+            first = follow["goal"] is None
+            follow["goal"], follow["time"] = goal, now
+            print(f"  AI: {'flying to look at' if first else 'following'} the person "
+                  f"({dist:.0f} m away), facing {yaw:.0f} deg")
 
         async def follow_ai():
             paused = False
+            follow = {"goal": None, "time": 0.0, "warned": False}
             while True:
-                state = await states.get()
-                print(f"  AI state: {state}")
-                if state in ("candidate", "confirmed") and not paused:
-                    await mission.pause_mission()
-                    paused = True
-                    print(f"  AI: {state.upper()} -> HOLDING POSITION over the person")
-                elif state == "confirmed":
-                    print("  AI: CONFIRMED -> keep holding (Ctrl+C = return and land)")
-                elif state in ("rejected", "lost", "searching") and paused:
-                    await mission.start_mission()
-                    paused = False
-                    print(f"  AI: {state.upper()} -> RESUMING the patrol")
+                try:
+                    state = await asyncio.wait_for(states.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    state = None
+                if state is not None:
+                    print(f"  AI state: {state}")
+                    if state in ("candidate", "confirmed") and not paused:
+                        await mission.pause_mission()
+                        paused = True
+                        follow = {"goal": None, "time": 0.0, "warned": False}
+                        print(f"  AI: {state.upper()} -> pausing the patrol to look at the person")
+                    elif state == "confirmed":
+                        print("  AI: CONFIRMED -> keep following (Ctrl+C = return and land)")
+                    elif state in ("rejected", "lost", "searching") and paused:
+                        await mission.start_mission()
+                        paused = False
+                        print(f"  AI: {state.upper()} -> RESUMING the patrol")
+                if paused:
+                    await look_at_target(follow)
+
+        async def track_heading():
+            try:
+                async for h in telemetry.subscribe_heading():
+                    drone["heading_deg"] = h.heading_deg
+            except Exception as exc:                   # position still works without it
+                print(f"  (no heading telemetry: {exc})")
+
+        async def track_attitude():
+            try:
+                async for attitude in telemetry.subscribe_attitude_euler():
+                    drone["roll_deg"] = attitude.roll_deg
+                    drone["pitch_deg"] = attitude.pitch_deg
+            except Exception as exc:
+                print(f"  (no attitude telemetry: {exc})")
+
+        async def track_position():
+            try:
+                async for pos in telemetry.subscribe_position():
+                    drone["lat"], drone["lon"] = pos.latitude_deg, pos.longitude_deg
+                    drone["alt_abs_m"] = pos.absolute_altitude_m
+                    drone["alt_rel_m"] = pos.relative_altitude_m
+            except Exception as exc:
+                print(f"  (drone position telemetry stopped: {exc})")
+
+        async def publish_drone_state():
+            # Publish on a timer so a slower GPS stream does not limit the rate.
+            try:
+                while True:
+                    if drone["lat"] is not None:
+                        publish({**drone, "time": time.time()})
+                    await asyncio.sleep(DRONE_STATE_PERIOD_S)
+            except Exception as exc:
+                print(f"  (drone state publishing stopped: {exc})")
 
         async def progress():
             async for mp in mission.subscribe_mission_progress():
                 print(f"  waypoint {mp.current}/{mp.total}")
                 if mp.total and mp.current >= mp.total:
                     return
-        ai_task = asyncio.ensure_future(follow_ai())
+
+        tasks = [asyncio.ensure_future(follow_ai())]
+        if publish is not None:
+            tasks.append(asyncio.ensure_future(track_heading()))
+            tasks.append(asyncio.ensure_future(track_attitude()))
+            tasks.append(asyncio.ensure_future(track_position()))
+            tasks.append(asyncio.ensure_future(publish_drone_state()))
         await until_stopped(progress(), stop)
-        ai_task.cancel()
+        for t in tasks:
+            t.cancel()
 
         # 6. RETURN -------------------------------------------------------
         if stop.is_set():

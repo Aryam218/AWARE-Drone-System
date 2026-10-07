@@ -1,6 +1,9 @@
+import time
+
 import cv2
 import numpy as np
 import PIL
+import PIL.Image
 from loguru import logger
 
 from cloud_track.tracker_wrapper import OpenCVWrapper
@@ -38,6 +41,19 @@ class CloudTrack:
     Local OpenCV tracker:
         Follows the currently selected missing-person candidate
         efficiently between frames.
+
+    Re-detection while TRACKING:
+        The local tracker follows pixels, not people, so it can
+        slide onto the background (e.g. a booth wall) when the
+        person walks away. Every redetect_interval_s seconds (and
+        whenever the local tracker fails), the person detector runs
+        again (no VLM call) to check the box is still on a matching
+        person:
+
+            still on them      -> snap the tracker onto the detection
+            moved a little     -> re-find them nearby, re-anchor
+            not found          -> count a miss; after
+                                  max_redetect_misses AND lost_timeout_s unseen -> LOST
 
     The higher-level SearchController handles:
         - operator confirmation
@@ -81,6 +97,45 @@ class CloudTrack:
 
         self.current_track_id = None
 
+        # --------------------------------------------------
+        # RE-DETECTION WHILE TRACKING
+        # --------------------------------------------------
+
+        # Seconds between detector checks while tracking
+        # (frame time: simulation time for the live camera).
+        self.redetect_interval_s = 3.0
+
+        # Both consecutive failed checks and time unseen are required for LOST.
+        self.max_redetect_misses = 2
+        self.lost_timeout_s = 30.0
+
+        self._last_redetect_time = None
+        self._redetect_misses = 0
+
+        # Last box confirmed by the detector (not just the
+        # local tracker), its ground position and frame time.
+        self._anchor_box = None
+        self._anchor_ground = None
+        self._anchor_time = None
+        self._anchor_pose = None
+        self._anchor_frame = None
+
+        # Re-finding by ground position: the person may have
+        # walked this far: base + walking speed x time since
+        # they were last verified (capped).
+        self.reacquire_base_m = 4.0
+        self.reacquire_walk_speed_m_s = 1.5
+        self.reacquire_max_m = 15.0
+
+        # Drone/camera pose of the frame self.box comes from
+        # (live simulation only), so a rejection can be
+        # remembered as a PLACE on the ground.
+        self.box_frame_pose = None
+
+        # The frame (RGB) self.box comes from, so a rejection
+        # can also remember what the person looked like.
+        self.box_frame = None
+
     # ======================================================
     # RESET
     # ======================================================
@@ -112,6 +167,16 @@ class CloudTrack:
         self.box = None
         self.current_justification = None
         self.current_track_id = None
+
+        self._last_redetect_time = None
+        self._redetect_misses = 0
+        self._anchor_box = None
+        self._anchor_ground = None
+        self._anchor_time = None
+        self._anchor_pose = None
+        self._anchor_frame = None
+        self.box_frame_pose = None
+        self.box_frame = None
 
         self.state = "SEARCHING"
 
@@ -161,6 +226,26 @@ class CloudTrack:
 
         rejected_id = self.current_track_id
 
+        # Remember WHERE the person stands (works even when
+        # the track ID is only temporary). Uses the last
+        # VERIFIED position: the small tracker's box can be
+        # stuck on the wrong spot while the drone moves.
+        target = self.verified_target()
+
+        if (
+            target is not None
+            and hasattr(
+                self.backend,
+                "reject_place",
+            )
+        ):
+            self.backend.reject_place(
+                target["box"],
+                target["pose"],
+                target["frame"],
+                latlon=target["ground"],
+            )
+
         if rejected_id is not None:
 
             if hasattr(
@@ -196,6 +281,7 @@ class CloudTrack:
         frame: np.ndarray,
         category: str,
         description: str = None,
+        timestamp: float = None,
     ):
         """
         Process one frame.
@@ -221,6 +307,11 @@ class CloudTrack:
             reset active target
                 ↓
             return to SEARCHING
+
+        timestamp:
+            Optional frame time in seconds (simulation time for
+            the live Gazebo camera). Passed to the detector/VLM
+            backend for its answer cache. None = wall-clock time.
 
         Returns:
             bbox:
@@ -259,6 +350,7 @@ class CloudTrack:
                     frame_rgb,
                     category,
                     description,
+                    timestamp=timestamp,
                 )
             )
 
@@ -299,6 +391,35 @@ class CloudTrack:
                 )
             )
 
+            # ----------------------------------------------
+            # RE-DETECTION: check the box is still on the
+            # person (periodically, or right away if the
+            # local tracker just failed).
+            # ----------------------------------------------
+
+            now = self._clock(timestamp)
+
+            tracker_failed = (
+                not success
+                or bbox is None
+            )
+
+            if (
+                self._can_redetect()
+                and (
+                    tracker_failed
+                    or self._redetect_due(now)
+                )
+            ):
+
+                bbox, success = self._redetect(
+                    frame_rgb,
+                    category,
+                    description,
+                    None if tracker_failed else bbox,
+                    now,
+                )
+
             if not success or bbox is None:
 
                 lost_track_id = (
@@ -321,6 +442,13 @@ class CloudTrack:
                 self.box = np.asarray(
                     bbox
                 )
+
+                self.box_frame_pose = getattr(
+                    self.backend,
+                    "frame_pose",
+                    None,
+                )
+                self.box_frame = frame_rgb
 
         # --------------------------------------------------
         # NORMALIZE BBOX
@@ -349,6 +477,7 @@ class CloudTrack:
         frame: np.ndarray,
         category: str,
         description: str,
+        timestamp: float = None,
     ):
         """
         Search one frame for matching people.
@@ -386,6 +515,13 @@ class CloudTrack:
             frame
         )
 
+        # Only pass the timestamp when there is one, so
+        # backends without a timestamp argument still work.
+        extra_args = {}
+
+        if timestamp is not None:
+            extra_args["timestamp"] = timestamp
+
         # --------------------------------------------------
         # DETECTOR + BYTETRACK + VLM
         # --------------------------------------------------
@@ -402,6 +538,7 @@ class CloudTrack:
                 image_pil,
                 category,
                 description,
+                **extra_args,
             )
 
         # --------------------------------------------------
@@ -558,8 +695,30 @@ class CloudTrack:
 
         self.box = selected_box
 
+        self.box_frame_pose = getattr(
+            self.backend,
+            "frame_pose",
+            None,
+        )
+        self.box_frame = frame
+
         self.current_track_id = (
             selected_track_id
+        )
+
+        # The detector + VLM just verified this box.
+        self._anchor_box = np.asarray(
+            selected_box,
+            dtype=np.float32,
+        )
+        self._redetect_misses = 0
+        self._last_redetect_time = self._clock(
+            timestamp
+        )
+        self._set_anchor_ground(
+            self._anchor_box,
+            self._last_redetect_time,
+            frame,
         )
 
         self.state = "TRACKING"
@@ -594,6 +753,227 @@ class CloudTrack:
             selected_box,
             justification,
         )
+
+    # ======================================================
+    # RE-DETECTION HELPERS
+    # ======================================================
+
+    @staticmethod
+    def _clock(timestamp):
+        """Frame time if known (simulation time), else wall clock."""
+
+        return (
+            float(timestamp)
+            if timestamp is not None
+            else time.monotonic()
+        )
+
+    def _set_anchor_ground(self, box, now, frame=None) -> None:
+        """Remember where on the ground the verified target stands,
+        plus the frame and drone pose it was verified in."""
+
+        self._anchor_ground = None
+        self._anchor_time = now
+        self._anchor_frame = frame
+        self._anchor_pose = getattr(
+            self.backend,
+            "frame_pose",
+            None,
+        )
+
+        if box is not None and hasattr(
+            self.backend,
+            "ground_position",
+        ):
+            self._anchor_ground = self.backend.ground_position(box)
+
+    def verified_target(self):
+        """
+        The target as last VERIFIED by the detector (not the
+        small tracker's latest guess), or None:
+
+            {"box", "pose", "frame", "ground" (lat, lon) or None}
+
+        Used for rejections and for telling the drone where to
+        look: while the drone moves, the small tracker's box can
+        stay on the wrong spot of the image.
+        """
+
+        if self._anchor_box is None:
+            return None
+
+        return {
+            "box": self._anchor_box,
+            "pose": self._anchor_pose,
+            "frame": self._anchor_frame,
+            "ground": self._anchor_ground,
+        }
+
+    def _can_redetect(self) -> bool:
+
+        return hasattr(
+            self.backend,
+            "redetect_target",
+        )
+
+    def _redetect_due(self, now) -> bool:
+
+        if self._last_redetect_time is None:
+            return True
+
+        elapsed = now - self._last_redetect_time
+
+        # elapsed < 0: the clock went backwards
+        # (e.g. the simulation was restarted).
+        return (
+            elapsed < 0
+            or elapsed >= self.redetect_interval_s
+        )
+
+    def _redetect(
+        self,
+        frame_rgb: np.ndarray,
+        category: str,
+        description: str,
+        track_box,
+        now,
+    ):
+        """
+        Run the person detector and check the target.
+
+        track_box:
+            where the local tracker thinks the target is,
+            or None if the local tracker just failed.
+
+        Returns (bbox, success).
+        """
+
+        self._last_redetect_time = now
+
+        ref_box = (
+            track_box
+            if track_box is not None
+            else self.box
+        )
+
+        # Ground-position search, if the target's ground
+        # position is known (live simulation).
+        ground_args = {}
+
+        if self._anchor_ground is not None:
+
+            elapsed = max(
+                0.0,
+                now - (self._anchor_time if self._anchor_time is not None else now),
+            )
+
+            ground_args = {
+                "anchor_ground": self._anchor_ground,
+                "max_ground_distance_m": min(
+                    self.reacquire_max_m,
+                    self.reacquire_base_m
+                    + self.reacquire_walk_speed_m_s * elapsed,
+                ),
+            }
+
+        try:
+
+            with self.fm_timer:
+
+                new_box, how = (
+                    self.backend.redetect_target(
+                        PIL.Image.fromarray(frame_rgb),
+                        category,
+                        description,
+                        ref_box,
+                        self._anchor_box,
+                        **ground_args,
+                    )
+                )
+
+        except Exception as exc:
+
+            # Detector problem: don't drop the target
+            # because of it, keep the tracker's answer.
+            logger.warning(
+                "AWARE re-detection failed: "
+                f"{exc}"
+            )
+
+            return ref_box, ref_box is not None
+
+        # --------------------------------------------------
+        # PERSON FOUND: re-anchor the local tracker on them
+        # --------------------------------------------------
+
+        if new_box is not None:
+
+            new_box = np.asarray(
+                new_box,
+                dtype=np.float32,
+            ).reshape(4)
+
+            try:
+
+                self.frontend_tracker.init(
+                    frame_rgb,
+                    new_box,
+                )
+
+            except Exception as exc:
+
+                logger.warning(
+                    "AWARE could not re-anchor "
+                    f"the tracker: {exc}"
+                )
+
+                # The detector still verified this sighting even if the local
+                # tracker could not be initialized; retry tracking next frame.
+
+            self._anchor_box = new_box
+            self._redetect_misses = 0
+            self._set_anchor_ground(new_box, now, frame_rgb)
+
+            if how == "reacquired":
+
+                logger.warning(
+                    "AWARE re-detection: tracker had "
+                    "slipped off the target; re-found "
+                    "the person nearby at "
+                    f"{new_box.astype(int).tolist()}"
+                )
+
+            else:
+
+                logger.info(
+                    "AWARE re-detection: target "
+                    "still on a matching person."
+                )
+
+            return new_box, True
+
+        # --------------------------------------------------
+        # PERSON NOT FOUND
+        # --------------------------------------------------
+
+        self._redetect_misses += 1
+
+        logger.warning(
+            "AWARE re-detection: no matching person "
+            "at the tracked box "
+            f"(miss {self._redetect_misses}/"
+            f"{self.max_redetect_misses}): {how}."
+        )
+
+        unseen_s = max(0.0, now - self._anchor_time) if self._anchor_time is not None else 0.0
+        if (
+            self._redetect_misses >= self.max_redetect_misses
+            and unseen_s >= self.lost_timeout_s
+        ):
+            return None, False
+
+        # Keep the last box through temporary misses, including tracker failures.
+        return ref_box, ref_box is not None
 
     # ======================================================
     # LOCAL TARGET TRACKING
