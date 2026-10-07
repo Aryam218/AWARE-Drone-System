@@ -9,9 +9,10 @@ function element() {
   const classes = new Set();
   return {textContent:'', value:'red top', disabled:false,
     classList:{add:c=>classes.add(c),remove:c=>classes.delete(c),contains:c=>classes.has(c)},
-    children:[], replaceChildren(){this.children=[];}, appendChild(node){this.children.push(node);}, style:{}};
+    children:[], replaceChildren(...nodes){this.children=nodes;}, appendChild(node){this.children.push(node);},
+    querySelector(selector){return selector === "img" ? this.children.find(node=>node.tagName === "IMG") ?? null : null;}, style:{}};
 }
-const document = {getElementById(id) {if(!elements.has(id)) elements.set(id,element());return elements.get(id);},createElement:element};
+const document = {getElementById(id) {if(!elements.has(id)) elements.set(id,element());return elements.get(id);},createElement(tag){const node=element();node.tagName=tag.toUpperCase();return node;}};
 class WebSocket {static OPEN=1;constructor(){this.readyState=1;}send(payload){this.last=JSON.parse(payload);}}
 const ctx=vm.createContext({document,WebSocket,console,setTimeout(){},alert(){}});
 vm.runInContext(script,ctx);
@@ -104,3 +105,20 @@ assert.strictEqual(document.getElementById('searchStatusTitle').textContent,'Rea
 assert.strictEqual(document.getElementById('searchActivityIndicator').hidden,true);
 assert.strictEqual(document.getElementById('searchError').textContent,'Search refused.');
 console.log('Idle reconnect clears stale cards; rejected-start state restoration passed.');
+
+// Repeated confirmed previews reuse their image; fixed viewport prevents collapse.
+call('handleBackendMessage({type:"search_status",state:"confirmed",message:"Tracking"})');
+call('handleBackendMessage({type:"tracking_update",candidate_id:"preview",image:"data:image/jpeg;base64,first"})');
+const previewHolder=document.getElementById('confirmedImageContainer');
+const previewImage=previewHolder.children[0];
+assert(previewImage && previewImage.tagName==='IMG');
+for (let i=0;i<20;i++) {
+  call(`handleBackendMessage(${JSON.stringify({type:'tracking_update',candidate_id:'preview',image:`data:image/jpeg;base64,frame${i}`})})`);
+  assert.strictEqual(previewHolder.children.length,1);
+  assert.strictEqual(previewHolder.children[0],previewImage);
+}
+assert.strictEqual(previewImage.src,'data:image/jpeg;base64,frame19');
+assert(/#confirmedImageContainer\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3/.test(html));
+assert(/#confirmedImageContainer img\s*\{[^}]*height:\s*100%/.test(html));
+assert(/#confirmedImageContainer img\s*\{[^}]*object-fit:\s*contain/.test(html));
+console.log('Tracking previews retain the same image in a stable, uncropped viewport.');

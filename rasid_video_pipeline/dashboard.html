@@ -1224,6 +1224,22 @@ button:disabled {
     display: block;
 }
 
+/* Reserve image space so tracking JPEG updates cannot collapse the page. */
+#confirmedImageContainer {
+    width: 100%;
+    max-width: 640px;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    background: #060a12;
+}
+
+#confirmedImageContainer img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
 .confirmed-title {
     color: var(--success);
 
@@ -2113,11 +2129,16 @@ function clearPersonCards() {
 }
 function showImage(container, image) {
     if (!image || !image.startsWith("data:image/jpeg;base64,")) return;
-    const element = document.createElement("img");
+    const holder = document.getElementById(container);
+    let element = holder.querySelector("img");
+    if (!element) {
+        element = document.createElement("img");
+        element.alt = "Drone camera: tracked person";
+        element.style.maxWidth = "100%";
+        holder.replaceChildren(element);
+    }
+    // Keep the same element and layout while each new JPEG loads.
     element.src = image;
-    element.alt = "Drone camera: tracked person";
-    element.style.maxWidth = "100%";
-    document.getElementById(container).replaceChildren(element);
 }
 function handleBackendMessage(data) {
     if (Number.isFinite(data.sim_time)) latestSimTime = Math.max(latestSimTime ?? data.sim_time, data.sim_time);
